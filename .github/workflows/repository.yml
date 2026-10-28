@@ -1,0 +1,18 @@
+name: Repository checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  documentation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Verify bootstrap
+        shell: bash
+        run: |
+          for file in README.md LICENSE CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md CHANGELOG.md THIRD_PARTY_NOTICES.md docs/PROJECT_BLUEPRINT.md docs/ROADMAP.md; do
+            test -s "$file" || exit 1
+          done
+          grep -q 'GNU AFFERO GENERAL PUBLIC LICENSE' LICENSE
+          cmp VanillaOnlineStats.md docs/PROJECT_BLUEPRINT.md
+          git diff --check
