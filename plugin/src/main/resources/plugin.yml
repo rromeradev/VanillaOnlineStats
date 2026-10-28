@@ -1,0 +1,15 @@
+name: VanillaOnlineStats
+main: dev.vanillaonlinestats.plugin.VanillaOnlineStatsPlugin
+version: '${version}'
+api-version: '26.3'
+load: POSTWORLD
+depend: [AuthMe]
+commands:
+  vos:
+    description: Estado local do VanillaOnlineStats
+    usage: /vos status
+    permission: vanillaonlinestats.status
+permissions:
+  vanillaonlinestats.status:
+    description: Consultar estado local do plugin
+    default: op

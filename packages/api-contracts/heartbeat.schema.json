@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rromeradev/VanillaOnlineStats/contracts/heartbeat/v1",
+  "title": "Server heartbeat v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "messageId", "serverId", "sentAt", "occurredAt", "type", "source", "payload"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "messageId": {"type": "string", "format": "uuid"},
+    "serverId": {"type": "string", "format": "uuid"},
+    "sentAt": {"type": "string", "format": "date-time"},
+    "occurredAt": {"type": "string", "format": "date-time"},
+    "type": {"const": "server.heartbeat"},
+    "source": {"const": "paper-api"},
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pluginVersion", "minecraftVersion", "authMeVersion", "uptimeSeconds", "playersOnline"],
+      "properties": {
+        "pluginVersion": {"type": "string", "minLength": 1, "maxLength": 64},
+        "minecraftVersion": {"type": "string", "minLength": 1, "maxLength": 32},
+        "authMeVersion": {"type": "string", "minLength": 1, "maxLength": 64},
+        "uptimeSeconds": {"type": "integer", "minimum": 0},
+        "playersOnline": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

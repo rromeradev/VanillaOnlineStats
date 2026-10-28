@@ -1,7 +1,7 @@
 # VanillaOnlineStats
 
 > **Documento mestre de produto, requisitos e arquitetura**  
-> Estado: `DRAFT-002 — decisões de produto ratificadas; base normativa para implementação`  
+> Estado: `DRAFT-003 — decisões de produto ratificadas; base normativa para implementação`  
 > Data de referência: **28/10/2026**  
 > Público: mantenedores, contribuidores, administradores de servidores Paper e jogadores.  
 > Idioma principal do projeto: **português (pt-BR)**; código, contratos de API e identificadores em **inglês**.  
@@ -11,7 +11,7 @@
 
 ## 0. Como interpretar este documento
 
-Esta especificação consolida os requisitos, o brainstorm inicial e as decisões do mantenedor do **VanillaOnlineStats**. A revisão DRAFT-002 fixa o modelo self-hosted → SaaS, administração remota restrita ao Admin, visibilidade administrativa integral dos dados coletados e licença principal. Ela deve orientar implementações, revisão de PRs, arquitetura e roadmap. Sempre que surgir conflito entre velocidade de entrega e os princípios de segurança, confiabilidade, compatibilidade e baixo impacto no TPS, os princípios prevalecem.
+Esta especificação consolida os requisitos, o brainstorm inicial e as decisões do mantenedor do **VanillaOnlineStats**. A revisão DRAFT-003 fixa o modelo self-hosted → SaaS, administração remota restrita ao Admin, visibilidade administrativa integral dos dados coletados e licença principal. Ela deve orientar implementações, revisão de PRs, arquitetura e roadmap. Sempre que surgir conflito entre velocidade de entrega e os princípios de segurança, confiabilidade, compatibilidade e baixo impacto no TPS, os princípios prevalecem.
 
 **Vocabulário normativo:**
 
@@ -23,6 +23,10 @@ Esta especificação consolida os requisitos, o brainstorm inicial e as decisõe
 - **`DECIDIDO`, `PROPOSTO`, `PENDENTE`, `EXPERIMENTAL`:** estado da decisão.
 
 Este documento **não afirma que a API Paper permite literalmente recuperar cada informação interna de Minecraft**. O objetivo principal é a **maior cobertura prática, documentada, verificável e sustentável possível das APIs públicas expostas pela versão de Paper suportada**, acrescida de observação de eventos, métricas da JVM e integrações explícitas. Alguns dados exigem processamento, profiling, histórico prévio, permissões, tecnologias externas ou nem sequer estão disponíveis ao servidor.
+
+### Revisão DRAFT-003 — baseline atualizada pelo mantenedor em 28/10/2026
+
+O alvo inicial passa a ser Paper 26.3 build 227 (paper-26.3-227.jar) com Java 25 e AuthMe 6.0.1 Paper. Menções a expansão 26.x são históricas e não alteram este alvo. A compatibilidade só é confirmada pelos testes registrados em docs/development/local-setup.md.
 
 ### 0.1 Decisões já fechadas
 
@@ -327,7 +331,7 @@ No `plugin.yml` clássico (preferido inicialmente por estabilidade):
 name: VanillaOnlineStats
 main: dev.vanillaonlinestats.plugin.VanillaOnlineStatsPlugin
 version: '${version}' # substituir no build
-api-version: '1.21.11' # confirmar compatibilidade da linha suportada
+api-version: '26.3' # confirmar compatibilidade da linha suportada
 load: POSTWORLD
 depend:
   - AuthMe
@@ -466,8 +470,8 @@ Nomes e rotas são **propostas** e podem ser ajustados antes da primeira API pub
 
 | Camada | Recomendação inicial | Motivo/observação |
 |---|---|---|
-| Minecraft | **Paper 1.21.11** como baseline de compatibilidade | Java 21; alvo conservador para plugin moderno + AuthMe 6.0.1; versões 26.x em matriz adicional após validação. |
-| Plugin | **Java 21**, Gradle Kotlin DSL, Paper API `compileOnly` | Toolchain estável para a baseline; Java 25 para a linha Paper 26.1+ em pipeline específico. |
+| Minecraft | **Paper 26.3 build 227** como baseline de compatibilidade | Java 25; alvo conservador para plugin moderno + AuthMe 6.0.1; outros builds em matriz adicional após validação. |
+| Plugin | **Java 25**, Gradle Kotlin DSL, Paper API `compileOnly` | Toolchain estável para a baseline; Gradle 9.2.1 e API do build 227 fixados. |
 | AuthMe | **AuthMeReloaded 6.0.1 (build Paper)** como primeiro alvo | Versão estável e correções importantes na linha 6.0; verificar integração e compatibilidade por matriz. |
 | Backend | **NestJS 12.x + TypeScript** | Módulos, DI, validação, HTTP e canais real-time; fixar versão em lockfile. |
 | Runtime web | **Node.js 24 LTS** | Compatível com Angular 22 e NestJS 12, baseline madura no ciclo de suporte. |
@@ -484,14 +488,14 @@ Nomes e rotas são **propostas** e podem ser ajustados antes da primeira API pub
 | Observabilidade | Logs estruturados, OpenTelemetry/Prometheus opcional | Medir overhead do próprio VanillaOnlineStats. |
 
 **Por que não Prisma 8 na largada?** Em 23/10/2026, a documentação do fornecedor o identificava como **release candidate**, com recursos ausentes e mudanças de API. Para um projeto de manutenção duradoura, Prisma 7 estável é a opção de menor risco; migrar depois com testes e ADR.  
-**Por que não Paper 26.x como baseline automática?** A linha 26.1+ exige **Java 25** segundo a documentação oficial, e a compatibilidade do AuthMe e dos adaptadores deve ser demonstrada numa matriz, não presumida.
+**Baseline atualizada pelo mantenedor:** Paper 26.3 build 227 exige **Java 25**; a compatibilidade do AuthMe e dos adaptadores deve ser demonstrada por testes, não presumida.
 
 ### 9.1 Estratégia de compatibilidade
 
 | Faixa | Status inicial | Exigência |
 |---|---|---|
-| Paper 1.21.11 + Java 21 + AuthMe 6.0.1 (Paper jar) | `TARGET-INITIAL` | Smoke/E2E, autenticação e coletores aprovados |
-| Paper 26.1+ + Java 25 + AuthMe compatível | `PLANNED/UNVERIFIED` | Build e testes dedicados antes de anunciar suporte |
+| Paper 26.3 build 227 + Java 25 + AuthMe 6.0.1 (Paper jar) | `TARGET-INITIAL` | Smoke/E2E, autenticação e coletores aprovados |
+| Outros builds Paper 26.x + Java 25 + AuthMe compatível | `PLANNED/UNVERIFIED` | Build e testes dedicados antes de anunciar suporte |
 | Folia | `FUTURO/UNVERIFIED` | Scheduler correto por entidade/região; **não** declarar `folia-supported: true` sem testes |
 | Spigot/Purpur/outros forks | `UNSUPPORTED` inicialmente | Não anunciar suporte baseado apenas em semelhança de API |
 | AuthMe 5.x | `UNVERIFIED` | Avaliar adaptador separado apenas se a demanda justificar |
@@ -688,7 +692,7 @@ São defaults de planejamento que precisam ser documentados na instalação e na
 
 ### F0 — Planejamento reprodutível
 
-- [ ] Ratificar a revisão DRAFT-002 e registrar ADRs técnicos ainda pendentes.
+- [ ] Ratificar a revisão DRAFT-003 e registrar ADRs técnicos ainda pendentes.
 - [ ] Criar monorepo, README, **LICENSE AGPL-3.0-only**, segurança, contribuidores/DCO, templates de issue/PR e CI mínimo.
 - [ ] Definir baseline Paper + AuthMe + Java, validar releases e reproduzir servidor local.
 - [ ] Implementar schema mínimo da API de telemetria e contratos.
@@ -744,7 +748,7 @@ São defaults de planejamento que precisam ser documentados na instalação e na
 
 ### F6 — Compatibilidade, escala e comunidade
 
-- [ ] Matriz Paper 26.x/Java 25 e AuthMe atual, suíte E2E.
+- [ ] Matriz Paper adicional/Java 25 e AuthMe atual, suíte E2E.
 - [ ] Folia somente após suporte real a schedulers.
 - [ ] Benchmark com servidores pequenos/médios, incidentes de perda e recuperação.
 - [ ] Versionamento semântico, releases assinadas/checksums, changelog e guia de upgrade.
@@ -759,7 +763,7 @@ São defaults de planejamento que precisam ser documentados na instalação e na
 
 **Frontend:** testes de componentes/rotas, acessibilidade, fluxo de login, loading/offline/no-data, E2E Playwright de Admin e Player.
 
-**CI GitHub:** jobs independentes e matrizes Java 21/25 quando aplicável; Node 24; lockfile, testes, lint, typecheck, migrations, build, SBOM/dependency audit, secret scanning, uploads de artefatos e release automatizada com revisão. `pull_request` de forks deve operar com permissões mínimas e sem segredos.
+**CI GitHub:** jobs independentes e matrizes Java 25/25 quando aplicável; Node 24; lockfile, testes, lint, typecheck, migrations, build, SBOM/dependency audit, secret scanning, uploads de artefatos e release automatizada com revisão. `pull_request` de forks deve operar com permissões mínimas e sem segredos.
 
 **Benchmark público:** publicar hardware/carga, cenário, versões, tempo de execução, MSPT/TPS, overhead do collector, perda de mensagens e limites de backlog. O benchmark é critério de release para recursos de coleta caros.
 
@@ -825,7 +829,7 @@ Fontes primárias: [OSI — AGPL-3.0](https://opensource.org/license/agpl-3.0), 
 | ADR-005 | PENDENTE produto | Perfil/rankings publicados para terceiros? | Privado por padrão, opt-in do Player para publicação. |
 | ADR-006 | **DECIDIDO** | Licença AGPL-3.0-only para código original e DCO. | Texto integral em LICENSE; auditoria de dependências e conformidade de API AuthMe. |
 | ADR-007 | PENDENTE técnico | Qual grupo de comandos administrativos entra em cada marco? | Moderação tipada primeiro; mundo depois; console arbitrário por último. |
-| ADR-008 | PENDENTE técnico | Versão mínima Minecraft e matriz futura. | Paper 1.21.11/Java21 como baseline inicial; expandir por testes. |
+| ADR-008 | PENDENTE técnico | Versão mínima Minecraft e matriz futura. | Paper 26.3 build 227/Java25 como baseline inicial; expandir por testes. |
 | ADR-009 | PENDENTE técnico | Retenção de inventário, posição, IP e eventos sensíveis. | Coleta controlada, período curto, acesso Admin irrestrito **ao que estiver armazenado**, auditoria. |
 | ADR-010 | PENDENTE técnico | Importação histórica de plugins terceiros. | Futuro, conectores e trilha de origem. |
 | ADR-011 | **DECIDIDO** | Modelo de isolamento para SaaS futuro. | `tenant_id` em autenticação, autorização, banco, eventos e auditoria desde o início. |
@@ -880,7 +884,7 @@ Fontes consultadas em **28/10/2026** (links sujeitos a mudanças, revalidar a ca
 ## Resumo executivo / próximos passos
 
 1. Criar o GitHub monorepo com este documento em `docs/PROJECT_BLUEPRINT.md`, `LICENSE` AGPL-3.0-only (texto oficial), DCO e um README que o referencie.
-2. Fixar a baseline compatível `Paper 1.21.11 + Java 21 + AuthMe 6.0.1 Paper`, validar manualmente o artefato baixado e o acesso à API; **não anunciar suporte sem testes**.
+2. Fixar a baseline compatível `Paper 26.3 build 227 + Java 25 + AuthMe 6.0.1 Paper`, validar manualmente o artefato baixado e o acesso à API; **não anunciar suporte sem testes**.
 3. Entregar **a primeira vertical slice self-hosted e tenant-aware**: plugin com `depend: [AuthMe]` → heartbeat autenticado → NestJS → PostgreSQL → Admin Angular.
 4. Em seguida implementar login web seguro + dados pessoais básicos e o painel Player; depois os primeiros controles de Admin tipados (moderação).
 5. Expandir os controles e a cobertura por coletores sob matriz de capacidades, com acesso administrativo total ao dado coletado, privacidade, performance e compatibilidade comprovadas. O SaaS pago continua etapa futura, sem impedir o uso self-hosted.

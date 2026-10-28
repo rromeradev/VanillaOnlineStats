@@ -1,0 +1,43 @@
+name: Plugin and contracts
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Build and test
+        working-directory: plugin
+        run: bash gradlew --no-daemon clean build
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r packages/api-contracts/requirements-test.txt
+      - run: python packages/api-contracts/test_contract.py
+      - name: Download verified smoke-test dependencies
+        shell: bash
+        run: |
+          mkdir -p .tools
+          curl --fail --location --retry 3 -o .tools/paper.jar https://fill-data.papermc.io/v1/objects/416b7d105b1d0192df4afa4b29d2800d9dbeda092a82fbc5b511248a54adde15/paper-26.3-227.jar
+          curl --fail --location --retry 3 -o .tools/authme.jar https://github.com/AuthMe/AuthMeReloaded/releases/download/6.0.1/AuthMe-6.0.1-Paper.jar
+          echo '416b7d105b1d0192df4afa4b29d2800d9dbeda092a82fbc5b511248a54adde15  .tools/paper.jar' | sha256sum -c -
+          echo '7704335e9e73a634d9d926344f77897f4c74f78f82453a59f5aa0f8d2722450a  .tools/authme.jar' | sha256sum -c -
+      - name: Smoke test with and without AuthMe
+        run: >-
+          python scripts/smoke_server.py --java "$JAVA_HOME/bin/java"
+          --paper .tools/paper.jar --authme .tools/authme.jar
+          --plugin plugin/build/libs/VanillaOnlineStats-0.1.0-SNAPSHOT.jar
+          --output .tools/smoke --accept-eula
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: plugin-and-test-results
+          path: |
+            plugin/build/libs/*.jar
+            plugin/build/reports/tests/
+            .tools/smoke/*/console.log

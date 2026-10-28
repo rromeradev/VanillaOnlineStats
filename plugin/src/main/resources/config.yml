@@ -1,0 +1,3 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+schema-version: 1
+# Transporte e coleta ainda não implementados; nenhuma conexão é aberta.

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "messageId": "ef7d248e-f867-4fa3-af82-d180bf3a5909",
+  "serverId": "d7b30a38-0899-4bad-b82f-7943454505aa",
+  "sentAt": "2026-10-28T21:00:00Z",
+  "occurredAt": "2026-10-28T21:00:00Z",
+  "type": "server.heartbeat",
+  "source": "paper-api",
+  "payload": {
+    "pluginVersion": "0.1.0-SNAPSHOT",
+    "minecraftVersion": "26.3",
+    "authMeVersion": "6.0.1",
+    "uptimeSeconds": 60,
+    "playersOnline": 0
+  }
+}

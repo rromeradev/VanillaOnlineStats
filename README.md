@@ -2,7 +2,7 @@
 
 Observabilidade para servidores Minecraft Paper Survival, com integração obrigatória ao AuthMeReloaded e áreas Admin e Player.
 
-**Estado: planejamento inicial (F0).** Este repositório contém a especificação e a estrutura documental. Ainda não há plugin executável, API, painel ou release disponível. Nenhuma combinação de versões foi validada.
+**Estado: bootstrap F0/F1.** Plugin inicial para Paper 26.3 build 227, Java 25 e AuthMe 6.0.1 Paper, com comando de status. API, transporte e painéis estão pendentes.
 
 ## Projeto
 
@@ -28,9 +28,7 @@ Self-hosted primeiro, com isolamento por tenant e servidor desde o início. A ev
 
 ## Desenvolvimento
 
-Clone o repositório e leia a especificação antes de contribuir. Nesta etapa não há comandos de build ou instalação de aplicações. As versões propostas no blueprint precisam ser verificadas antes de configurar dependências e anunciar compatibilidade.
-
-A CI inicial verifica os arquivos essenciais e a identidade da especificação. Builds, testes de contrato e integração serão acrescentados junto com os módulos executáveis.
+Consulte o [setup local](docs/development/local-setup.md) para compilar e executar os testes. O projeto usa Gradle Wrapper, testes JUnit e validação JSON Schema. A CI compila o JAR e verifica contratos.
 
 ## Licença
 

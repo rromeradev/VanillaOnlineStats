@@ -1,9 +1,9 @@
 # Roadmap
 
-Base: [blueprint DRAFT-002](PROJECT_BLUEPRINT.md), seção 13.
+Base: [blueprint DRAFT-003](PROJECT_BLUEPRINT.md), seção 13.
 
 - [x] Iniciar documentação, licença, contribuição, templates e CI documental.
-- [ ] F0: validar baseline e dependências; definir contratos mínimos de telemetria.
+- [x] F0: validar build da baseline Paper 26.3/Java 25, fixar dependências e definir contrato mínimo de heartbeat.
 - [ ] F1: plugin Paper, integração AuthMe e heartbeat.
 - [ ] F2: API, PostgreSQL, vínculo do Owner e overview Admin.
 - [ ] F3: autenticação web segura e estatísticas pessoais Player.
@@ -12,4 +12,4 @@ Base: [blueprint DRAFT-002](PROJECT_BLUEPRINT.md), seção 13.
 - [ ] F6: compatibilidade, benchmarks e comunidade.
 - [ ] SaaS: operação multi-tenant comercial, após maturidade self-hosted.
 
-O bootstrap documental não conclui F0. Gates de build e integração serão exigidos quando os projetos executáveis existirem.
+Bootstrap Java e contrato inicial presentes. F1 segue pendente: integração funcional de eventos, coletores, filas e transporte de heartbeat. Backend e frontend ainda não existem, portanto gates pnpm se aplicam quando criados.
