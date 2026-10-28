@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Ed25519 signed body v1 (decoded body bytes)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "actionId", "actorId", "actorRole", "serverId", "tenantId", "operation", "kind", "arguments", "issuedAt", "expiresAt", "riskLevel", "confirmed", "nonce", "auditCorrelationId"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "actionId": {"type": "string", "format": "uuid"},
+    "actorId": {"type": "string", "format": "uuid"},
+    "actorRole": {"enum": ["ADMIN", "OWNER", "PLAYER"]},
+    "serverId": {"type": "string", "format": "uuid"},
+    "tenantId": {"type": "string", "format": "uuid"},
+    "operation": {"type": "string", "pattern": "^[a-z][a-z0-9.-]{1,63}$"},
+    "kind": {"enum": ["query", "action", "link"]},
+    "arguments": {"type": "object"},
+    "issuedAt": {"type": "string", "format": "date-time"},
+    "expiresAt": {"type": "string", "format": "date-time"},
+    "riskLevel": {"enum": ["LOW", "MEDIUM", "HIGH"]},
+    "confirmed": {"type": "boolean"},
+    "nonce": {"type": "string", "format": "uuid"},
+    "auditCorrelationId": {"type": "string", "format": "uuid"}
+  },
+  "allOf": [{"if": {"properties": {"actorRole": {"const": "PLAYER"}}}, "then": {"properties": {"kind": {"const": "link"}, "operation": {"const": "player.link.redeem"}}}}]
+}

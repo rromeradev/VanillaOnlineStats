@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-schema-version: 1
+schema-version: 2
 heartbeat:
   enabled: false
   endpoint: https://stats.example.com/api/v1/agents/heartbeat
@@ -8,3 +8,45 @@ heartbeat:
   # Somente para API no MESMO computador, usando IP literal 127.0.0.1 ou [::1].
   allow-loopback-http: false
 # Credencial somente via variavel de ambiente VOS_AGENT_TOKEN; nunca neste arquivo.
+telemetry:
+  # Vazio mantém coleta local. API atual 0.2 só recebe heartbeat.
+  endpoint: ''
+collectors:
+  period-seconds: 10
+  world-storage: false
+  chunks: false
+limits:
+  queue-messages: 1024
+  queue-bytes: 2097152
+  batch-messages: 32
+  collector-budget-micros: 2000
+  players-per-cycle: 32
+  worlds-per-cycle: 8
+  chunks-per-cycle: 8
+  entities-per-chunk: 64
+  statistics-per-query: 64
+privacy:
+  player-state: false
+  inventories: false
+  positions: false
+  addresses: false
+  world-seeds: false
+  chat: false
+  safe-command-roots: []
+events:
+  blocks: false
+  entities: false
+control:
+  # WSS de saida, assinatura Ed25519 e tenant fixo exigidos.
+  endpoint: ''
+  tenant-id: ''
+  public-key: ''
+  writes-enabled: false
+  console-enabled: false
+  allowed-operations: []
+  allowed-console-roots: []
+integrations:
+  luckperms: false
+  vault: false
+  placeholderapi: false
+  placeholder-allowlist: []

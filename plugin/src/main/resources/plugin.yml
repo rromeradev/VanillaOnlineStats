@@ -4,11 +4,11 @@ version: '${version}'
 api-version: '26.3'
 load: POSTWORLD
 depend: [AuthMe]
+softdepend: [LuckPerms, Vault, PlaceholderAPI]
 commands:
   vos:
     description: Estado local do VanillaOnlineStats
-    usage: /vos status
-    permission: vanillaonlinestats.status
+    usage: /vos <status|collectors|capabilities|queue|query|link>
 permissions:
   vanillaonlinestats.status:
     description: Consultar estado local do plugin

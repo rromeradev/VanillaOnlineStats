@@ -1,0 +1,3 @@
+-r ../packages/api-contracts/requirements-test.txt
+websockets==15.0.1
+cryptography==50.0.2

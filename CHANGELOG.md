@@ -2,6 +2,18 @@
 
 ## Não lançado
 
+## 0.3.0 — 2026-10-28
+
+- Release funcional do plugin: coletores de servidor, JVM/performance, mundos e jogadores; consultas limitadas de chunks, entidades, inventários, estatísticas e advancements.
+- Eventos AuthMe e gameplay, políticas de privacidade e código in-game de vinculação.
+- Telemetria em lotes, fila por bytes/mensagens e spool AES-GCM opcional.
+- Canal WSS com assinaturas Ed25519, escopo tenant/servidor, TTL e auditoria/replay persistentes.
+- Ações tipadas de moderação, jogador e mundo; console opt-in com restrições.
+- Migração de configuração v1 → v2, comandos de diagnóstico e testes de protocolo no Paper real.
+- Integrações opcionais/futuras, limitações e requisitos da API registrados na matriz de cobertura.
+
+## 0.2.0-SNAPSHOT
+
 - Heartbeat básico com identidade persistente, fila limitada, timeout, backoff e status local.
 - API NestJS autenticada por agente, vinculada ao tenant/servidor e validada pelo contrato compartilhado.
 - Testes de contrato Java/TypeScript e envio real Paper → API com queda e reconexão.
