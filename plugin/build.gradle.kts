@@ -1,7 +1,7 @@
 plugins { java }
 
 group = "dev.vanillaonlinestats"
-version = "0.1.0-SNAPSHOT"
+version = "0.2.0-SNAPSHOT"
 
 repositories {
     mavenCentral()
@@ -12,6 +12,7 @@ dependencies {
     compileOnly("io.papermc.paper:paper-api:26.3.build.227-stable")
     testImplementation(platform("org.junit:junit-bom:5.12.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
+    testImplementation("com.google.code.gson:gson:2.14.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

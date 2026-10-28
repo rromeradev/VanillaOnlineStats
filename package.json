@@ -1,0 +1,9 @@
+{
+  "name": "vanilla-online-stats",
+  "private": true,
+  "version": "0.2.0",
+  "license": "AGPL-3.0-only",
+  "packageManager": "pnpm@10.34.9",
+  "engines": { "node": ">=24 <25" },
+  "scripts": { "build": "pnpm -r build", "test": "pnpm -r test" }
+}

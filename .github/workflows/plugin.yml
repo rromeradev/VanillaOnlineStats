@@ -14,6 +14,14 @@ jobs:
       - name: Build and test
         working-directory: plugin
         run: bash gradlew --no-daemon clean build
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Install and test API
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm -r test
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.12'
@@ -31,8 +39,8 @@ jobs:
         run: >-
           python scripts/smoke_server.py --java "$JAVA_HOME/bin/java"
           --paper .tools/paper.jar --authme .tools/authme.jar
-          --plugin plugin/build/libs/VanillaOnlineStats-0.1.0-SNAPSHOT.jar
-          --output .tools/smoke --accept-eula
+          --plugin plugin/build/libs/VanillaOnlineStats-0.2.0-SNAPSHOT.jar
+          --output .tools/smoke --heartbeat --accept-eula
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
@@ -41,3 +49,4 @@ jobs:
             plugin/build/libs/*.jar
             plugin/build/reports/tests/
             .tools/smoke/*/console.log
+            .tools/smoke/*/api.log

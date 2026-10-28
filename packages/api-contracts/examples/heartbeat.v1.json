@@ -9,6 +9,7 @@
   "payload": {
     "pluginVersion": "0.1.0-SNAPSHOT",
     "minecraftVersion": "26.3",
+    "paperVersion": "26.3-227-7f9c797 (MC: 26.3)",
     "authMeVersion": "6.0.1",
     "uptimeSeconds": 60,
     "playersOnline": 0

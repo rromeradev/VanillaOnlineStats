@@ -1,3 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 schema-version: 1
-# Transporte e coleta ainda não implementados; nenhuma conexão é aberta.
+heartbeat:
+  enabled: false
+  endpoint: https://stats.example.com/api/v1/agents/heartbeat
+  interval-seconds: 10
+  timeout-seconds: 3
+  # Somente para API no MESMO computador, usando IP literal 127.0.0.1 ou [::1].
+  allow-loopback-http: false
+# Credencial somente via variavel de ambiente VOS_AGENT_TOKEN; nunca neste arquivo.

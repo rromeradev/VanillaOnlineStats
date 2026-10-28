@@ -16,10 +16,11 @@
     "payload": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["pluginVersion", "minecraftVersion", "authMeVersion", "uptimeSeconds", "playersOnline"],
+      "required": ["pluginVersion", "minecraftVersion", "paperVersion", "authMeVersion", "uptimeSeconds", "playersOnline"],
       "properties": {
         "pluginVersion": {"type": "string", "minLength": 1, "maxLength": 64},
         "minecraftVersion": {"type": "string", "minLength": 1, "maxLength": 32},
+        "paperVersion": {"type": "string", "minLength": 1, "maxLength": 128},
         "authMeVersion": {"type": "string", "minLength": 1, "maxLength": 64},
         "uptimeSeconds": {"type": "integer", "minimum": 0},
         "playersOnline": {"type": "integer", "minimum": 0}

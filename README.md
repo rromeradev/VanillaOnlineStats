@@ -2,7 +2,7 @@
 
 Observabilidade para servidores Minecraft Paper Survival, com integração obrigatória ao AuthMeReloaded e áreas Admin e Player.
 
-**Estado: bootstrap F0/F1.** Plugin inicial para Paper 26.3 build 227, Java 25 e AuthMe 6.0.1 Paper, com comando de status. API, transporte e painéis estão pendentes.
+**Estado: heartbeat inicial F1/F2.** Plugin para Paper 26.3 build 227, Java 25 e AuthMe 6.0.1 Paper, com status, coleta básica e envio assíncrono para uma API NestJS autenticada. Banco, vínculo do Owner e painéis estão pendentes.
 
 ## Projeto
 
@@ -28,7 +28,7 @@ Self-hosted primeiro, com isolamento por tenant e servidor desde o início. A ev
 
 ## Desenvolvimento
 
-Consulte o [setup local](docs/development/local-setup.md) para compilar e executar os testes. O projeto usa Gradle Wrapper, testes JUnit e validação JSON Schema. A CI compila o JAR e verifica contratos.
+Consulte o [setup local](docs/development/local-setup.md) e o [guia de heartbeat](docs/development/heartbeat.md). O projeto usa Gradle Wrapper, pnpm, JUnit e JSON Schema. A CI compila, verifica autorização/contratos e testa queda/reconexão da API usando um servidor Paper real.
 
 ## Licença
 

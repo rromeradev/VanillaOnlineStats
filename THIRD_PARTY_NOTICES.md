@@ -17,3 +17,12 @@ Paper API 26.3.build.227-stable: GPL-3.0 (conforme metadados upstream), compileO
 JUnit 5.12.2: EPL-2.0, apenas testes.
 jsonschema 4.23.0: MIT, apenas testes de contratos.
 As dependências transitivas estão no lockfile/metadados Gradle. SBOM e revisão integral de distribuição continuam necessários antes da release.
+
+## API e serialização
+
+- Gson 2.14.0 (Apache-2.0): fornecido pelo runtime Paper, não incorporado ao JAR; utilizado também nos testes.
+- NestJS 12.3.2, Express 5.3.0, AJV 8.20.0, ajv-formats 3.0.1: MIT.
+- reflect-metadata 0.2.2 e TypeScript 5.9.3: Apache-2.0.
+- RxJS 7.8.2: Apache-2.0.
+
+Versões e integridade das dependências JavaScript em pnpm-lock.yaml; os pacotes distribuídos pelos gerenciadores mantêm seus textos de licença. O software não inclui binários Paper/AuthMe. Não há release de distribuição agregada nesta etapa.
