@@ -75,6 +75,8 @@ control:
   const worlds = await invoke('queries',{operation:'worlds.list',arguments:{}}); assert.equal(worlds.state,'SUCCEEDED'); assert.ok(worlds.payload.items.length>0);
   const worldId = worlds.payload.items[0].worldId;
   const action = await invoke('actions',{operation:'world.time',arguments:{worldId,value:6000},confirmed:true}); assert.equal(action.state,'SUCCEEDED');
+  for(let n=0;n<28;n++){const read=await invoke('queries',{operation:'server.snapshot',arguments:{}});assert.equal(read.state,'SUCCEEDED');}
+  const automatic=await invoke('live?operation=server.performance');assert.equal(automatic.state,'SUCCEEDED');
   const broadcast=await invoke('actions',{operation:'server.broadcast',arguments:{message:'VanillaOnlineStats integration test'},confirmed:true});assert.equal(broadcast.state,'SUCCEEDED');
   const denied=await invoke('actions',{operation:'player.message',arguments:{playerId, message:'not allowed'},confirmed:true});assert.equal(denied.payload.reasonCode,'OPERATION_NOT_ALLOWED');
   const world = await invoke('queries',{operation:'world.snapshot',arguments:{worldId}}); assert.equal(world.state,'SUCCEEDED'); assert.ok(world.payload.time>=6000 && world.payload.time<6200); findings.push('Signed API query and world.time mutation completed by real Paper; result verified by readback.');

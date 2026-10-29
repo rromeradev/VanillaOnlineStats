@@ -37,6 +37,7 @@ export class Control {
   private sockets = new Map<string, WebSocket>(); private pending = new Map<string, Pending>();
   private wss = new WebSocketServer({ noServer: true, maxPayload: 65536, perMessageDeflate: false });
   private limits = new Limits(); private ping: NodeJS.Timeout;
+  private observations = new Map<string, {until:number;auditUntil:number;value?:any;pending?:Promise<any>}>();
   constructor(private db: Database, encodedKey: string, server: HttpServer) {
     this.privateKey = createPrivateKey({ key: Buffer.from(encodedKey, 'base64'), format: 'der', type: 'pkcs8' });
     if (this.privateKey.asymmetricKeyType !== 'ed25519') throw new Error('Invalid control key');
@@ -54,6 +55,7 @@ export class Control {
     this.ping.unref();
   }
   private attach(server: Server, ws: WebSocket) {
+    this.observations.clear();
     this.sockets.get(server.id)?.close(1012); this.sockets.set(server.id, ws); (ws as any).alive = true;
     ws.on('pong', () => { (ws as any).alive = true; });
     ws.on('error', () => {});
@@ -63,10 +65,11 @@ export class Control {
     });
     ws.on('message', (data, binary) => {
       void (async () => {
-        this.limits.check('agent-result:' + server.id, 180);
+        this.limits.check('agent-result:' + server.id, 1200);
         if (binary) throw new Error('binary');
         const value = JSON.parse(data.toString());
         if (value.type === 'agent.capabilities') {
+          this.observations.clear();
           const p = value.payload;
           if (!p || p.schemaVersion !== 1 || !Array.isArray(p.queries) || !Array.isArray(p.collectors) || p.queries.length > 64 || p.collectors.length > 32) throw new Error('capabilities');
           const sanitized = { schemaVersion: 1, playerQueries: p.playerQueries === true, authmePasswordLogin: p.authmePasswordLogin === true,
@@ -84,17 +87,33 @@ export class Control {
     });
   }
   connected(serverId: string) { return this.sockets.get(serverId)?.readyState === WebSocket.OPEN; }
-  async request(server: Server, session: Pick<Session, 'actor_id' | 'kind'> & { role?: string }, operation: string, args: any, kind: 'query' | 'action' | 'link', confirmed = false) {
+  async observe(server: Server, session: Pick<Session, 'actor_id' | 'kind'> & {role?:string}, operation:string, args:any) {
+    if (!QUERIES.includes(operation as any)) fail(400);
+    if (!this.connected(server.id)) fail(503);
+    const key=JSON.stringify([server.tenant_id,server.id,session.kind,session.actor_id,session.role,operation,args]);
+    const cached=this.observations.get(key);
+    if(cached?.pending)return structuredClone(await cached.pending);
+    if(cached && cached.until>Date.now())return structuredClone(cached.value);
+    if(this.observations.size>=512)this.observations.delete(this.observations.keys().next().value!);
+    const entry:{until:number;auditUntil:number;value?:any;pending?:Promise<any>}={until:0,auditUntil:cached?.auditUntil??0};
+    const pending=(async()=>{if(entry.auditUntil<Date.now()){await this.db.audit(server,session.actor_id,'live.'+operation,'STARTED');entry.auditUntil=Date.now()+60000;}return this.request(server,session,operation,args,'query',false,false);})();
+    entry.pending=pending;this.observations.set(key,entry);
+    try{const value=await pending;entry.value=value;entry.until=Date.now()+(value.state==='SUCCEEDED'?900:3000);entry.pending=undefined;return structuredClone(value);}
+    catch(error){this.observations.delete(key);throw error;}
+  }
+  async request(server: Server, session: Pick<Session, 'actor_id' | 'kind'> & { role?: string }, operation: string, args: any, kind: 'query' | 'action' | 'link', confirmed = false, record = true) {
     const socket = this.sockets.get(server.id);
     if (!socket || socket.readyState !== WebSocket.OPEN) fail(503, 'Servidor sem canal de controle.');
-    this.limits.check('control:' + server.id, 24);
-    if ([...this.pending.values()].filter(value => value.server.id === server.id).length >= 6) fail(429);
+    if(kind==='query'){this.limits.check('reads:'+server.id,600);this.limits.check('reads:'+server.id+':'+session.actor_id,90);}
+    else this.limits.check('control:' + server.id, 24);
+    // Reserve capacity for explicitly confirmed commands during continuous reads.
+    if ([...this.pending.values()].filter(value => value.server.id === server.id).length >= (kind==='query'?4:6)) fail(429);
     const actionId = randomUUID(), correlation = randomUUID(), now = Date.now(), risk = kind === 'action' ? ACTIONS[operation].risk : 'LOW';
     const body = { schemaVersion: 1, actionId, actorId: session.actor_id, actorRole: session.kind === 'PLAYER' ? 'PLAYER' : session.role ?? 'ADMIN',
       serverId: server.id, tenantId: server.tenant_id, operation, kind, arguments: args,
       issuedAt: new Date(now).toISOString(), expiresAt: new Date(now + 25_000).toISOString(), riskLevel: risk, confirmed, nonce: randomUUID(), auditCorrelationId: correlation };
     const bytes = Buffer.from(JSON.stringify(body)); if (bytes.length > 32768) fail(413);
-    const persist = kind !== 'link';
+    const persist = kind !== 'link' && record;
     if (persist) {
       await this.db.rows(`INSERT INTO vos_actions(id,tenant_id,server_id,actor_id,operation,kind,risk,state,correlation_id,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,'PENDING',$8,$9)`, [actionId, server.tenant_id, server.id, session.actor_id, operation, kind, risk, correlation, body.expiresAt]);
       await this.db.audit(server, session.actor_id, operation, 'PENDING', correlation);
@@ -114,7 +133,7 @@ export class Control {
         const action = await this.db.one('UPDATE vos_actions SET state=$1,encrypted_result=$2 WHERE id=$3 AND tenant_id=$4 AND server_id=$5 RETURNING actor_id,operation', [state, this.db.vault.seal(payload, this.db.context(pending.server)), actionId, pending.server.tenant_id, pending.server.id]);
         if (action) await this.db.audit(pending.server, action.actor_id, action.operation, state, pending.correlation);
       }
-      this.db.notify(pending.server.id); pending.resolve({ id: actionId, state, payload });
+      if(pending.persist)this.db.notify(pending.server.id); pending.resolve({ id: actionId, state, payload });
     } catch { pending.resolve({ id: actionId, state: 'UNKNOWN', payload: null }); }
   }
   async revoke(serverId: string) { const ws = this.sockets.get(serverId); if (ws) ws.close(1008); }

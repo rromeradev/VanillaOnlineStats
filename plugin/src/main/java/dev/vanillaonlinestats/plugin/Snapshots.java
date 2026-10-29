@@ -87,6 +87,8 @@ final class Snapshots {
     return object(
         "tps",
         plugin.getServer().getTPS(),
+        "playersOnline",
+        plugin.getServer().getOnlinePlayers().size(),
         "msptAverage",
         plugin.getServer().getAverageTickTime(),
         "msptP50",

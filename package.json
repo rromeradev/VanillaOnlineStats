@@ -1,7 +1,7 @@
 {
   "name": "vanilla-online-stats",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.5.1",
   "license": "AGPL-3.0-only",
   "packageManager": "pnpm@10.34.9",
   "engines": { "node": ">=24.22 <25" },

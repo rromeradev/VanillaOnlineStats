@@ -62,6 +62,7 @@ export async function createPlatform(config: PlatformConfig) {
     return { kind, displayName: display, serverId: server?.id, csrf: csrf(token, config.sessionSecret), expiresAt: expires };
   }
   function since(value: any) { const hours = Number(value ?? 24); if (![1,6,24,168].includes(hours)) fail(400); return new Date(Date.now() - hours * 3600_000); }
+  function queryArguments(value: string | undefined) { try { return JSON.parse(value == null ? '{}' : text(value,4096)); } catch { fail(400); } }
   function secrets(value: any, depth = 0): boolean {
     if (depth > 16) return true;
     if (Array.isArray(value)) return value.length > 1024 || value.some(v => secrets(v, depth + 1));
@@ -99,7 +100,7 @@ export async function createPlatform(config: PlatformConfig) {
       db.changes.on(sid,send);stopStreams.add(stop);res.on('close',stop);res.on('error',stop);send();
     }
     @Get('health') health() { return { status: 'ok' }; }
-    @Get('public/info') info() { return { name: 'VanillaOnlineStats', version: '0.5.0', demo: config.demo === true, playerLogin: 'authme-password', source: 'https://github.com/rromeradev/VanillaOnlineStats' }; }
+    @Get('public/info') info() { return { name: 'VanillaOnlineStats', version: '0.5.1', demo: config.demo === true, playerLogin: 'authme-password', source: 'https://github.com/rromeradev/VanillaOnlineStats' }; }
     @Get('public/servers') async publicServers() { return db.rows('SELECT id,name FROM vos_servers WHERE player_login=true ORDER BY name LIMIT 100'); }
     @Post('agents/heartbeat') @HttpCode(202)
     async heartbeat(@Headers('authorization') header: string, @Body() body: any) {
@@ -202,6 +203,11 @@ export async function createPlatform(config: PlatformConfig) {
     @Get('servers/:serverId/catalog') async catalog(@Req() req: Request, @Param('serverId') serverId: string) {
       const actor = await session(req), server = await db.admin(actor, id(serverId)); return { queries: QUERIES, actions: ACTIONS, capabilities: server.capabilities, role: server.role };
     }
+    @Get('servers/:serverId/live') async liveQuery(@Req() req:Request,@Param('serverId') serverId:string,@Query('operation') operation:string,@Query('arguments') raw:string) {
+      const actor=await session(req),server=await db.admin(actor,id(serverId));
+      if(!QUERIES.includes(operation as any))fail(400);
+      return control.observe(server,{...actor,role:server.role},operation,argumentsFor(operation,queryArguments(raw),'query'));
+    }
     @Post('servers/:serverId/queries') @HttpCode(200)
     async query(@Req() req: Request, @Param('serverId') serverId: string, @Body() body: any) {
       const actor = await mutation(req), server = await db.admin(actor, id(serverId)); fields(body, ['operation','arguments']);
@@ -279,6 +285,14 @@ export async function createPlatform(config: PlatformConfig) {
       const observed=profiles[0]?.payload.skin;
       const effective=skin[0]&&(!observed?.textureHash||skin[0].occurredAt>profiles[0].occurredAt)?skin[0].payload:observed;
       return { server: safeServer(server), skin:effective, profile: profiles[0] ? { ...profiles[0], payload: sanitizePlayer(profiles[0].payload) } : null, events: safeEvents };
+    }
+    @Get('me/servers/:serverId/live') async livePlayerQuery(@Req() req:Request,@Param('serverId') serverId:string,@Query('operation') operation:string,@Query('arguments') raw:string) {
+      const {actor,server}=await scopedPlayer(req,id(serverId));
+      if(!['player.snapshot','player.inventory','player.statistics','player.advancements'].includes(operation))fail(403);
+      if(!server.capabilities?.playerQueries)fail(409);
+      const args=queryArguments(raw);fields(args,['offset','statistic','material','entityType']);
+      const result=await control.observe(server,actor,operation,argumentsFor(operation,{...args,playerId:actor.actor_id},'query'));
+      if(result.payload)result.payload=sanitizePlayer(result.payload);return result;
     }
     @Post('me/servers/:serverId/queries') @HttpCode(200)
     async playerQuery(@Req() req: Request, @Param('serverId') serverId: string, @Body() body: any) {

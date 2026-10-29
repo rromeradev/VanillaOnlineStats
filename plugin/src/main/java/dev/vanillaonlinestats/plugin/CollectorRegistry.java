@@ -142,11 +142,26 @@ final class CollectorRegistry {
   private int liveCursor;
 
   void livePlayers(JavaPlugin plugin, Snapshots snapshots, Telemetry bus, AuthMeBridge auth) {
+    long until = System.nanoTime() + settings.budgetNanos();
+    bus.emit("server.performance.snapshot", snapshots.performance(), false);
+    var worlds = plugin.getServer().getWorlds();
+    JsonArray worldItems = new JsonArray();
+    for (int count = 0; count < Math.min(settings.maxWorlds(), worlds.size()); count++) {
+      if (System.nanoTime() >= until) break;
+      worldItems.add(snapshots.world(worlds.get(worldCursor++ % worlds.size())));
+    }
+    if (worldCursor > 1000000) worldCursor = 0;
+    if (!worldItems.isEmpty())
+      bus.emit(
+          "worlds.snapshot",
+          object("items", worldItems, "partial", worldItems.size() < worlds.size()),
+          false);
     if (!settings.players()) return;
     var players = plugin.getServer().getOnlinePlayers().toArray(org.bukkit.entity.Player[]::new);
     if (players.length == 0) return;
     JsonArray items = new JsonArray();
-    long until = System.nanoTime() + settings.budgetNanos();
+    // Keep player state responsive even if a native world snapshot exceeded its budget.
+    until = System.nanoTime() + settings.budgetNanos();
     for (int count = 0; count < Math.min(settings.maxPlayers(), players.length); count++) {
       var player = players[liveCursor++ % players.length];
       if (auth.authenticated(player)) items.add(snapshots.player(player, false));

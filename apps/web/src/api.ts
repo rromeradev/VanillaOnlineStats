@@ -9,7 +9,7 @@ export class Api {
     const headers = new Headers(options.headers);
     if (options.body) headers.set('Content-Type', 'application/json');
     if (this.identity()?.csrf) headers.set('X-CSRF-Token', this.identity()!.csrf);
-    const response = await fetch('/api/v1/' + path, { ...options, credentials: 'same-origin', headers });
+    const response = await fetch('/api/v1/' + path, { ...options, signal:options.signal??AbortSignal.timeout(35000), credentials: 'same-origin', headers });
     if (!response.ok) {
       if (response.status === 401 && !['auth/admin/login','auth/reauth','auth/password'].includes(path)) this.identity.set(null);
       const message: Record<number, string> = { 400: 'Confira os campos informados.', 401: 'Sessão ou credenciais inválidas. Entre novamente.',

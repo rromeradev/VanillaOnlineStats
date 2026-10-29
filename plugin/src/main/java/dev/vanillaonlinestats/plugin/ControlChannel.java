@@ -50,6 +50,8 @@ final class ControlChannel implements AutoCloseable {
   private CompletableFuture<?> tail = CompletableFuture.completedFuture(null);
   private long rateStart = System.nanoTime();
   private int requests;
+  private int readRequests;
+  private int frames;
 
   ControlChannel(
       JavaPlugin plugin,
@@ -153,9 +155,10 @@ final class ControlChannel implements AutoCloseable {
     if (now - rateStart > TimeUnit.MINUTES.toNanos(1)) {
       rateStart = now;
       requests = 0;
+      readRequests = 0;
+      frames = 0;
     }
-    if (++requests > 30) {
-      state = "limite de controle";
+    if (++frames > 1000) {
       origin.abort();
       disconnected(origin);
       return;
@@ -165,6 +168,10 @@ final class ControlChannel implements AutoCloseable {
       request = security.verify(raw, Instant.now());
     } catch (Exception denied) {
       send(origin, object("type", "control.rejected", "reason", "INVALID_OR_UNAUTHORIZED"));
+      return;
+    }
+    if (request.kind().equals("query") ? ++readRequests > 600 : ++requests > 30) {
+      send(origin, result(request, "REJECTED", object("reasonCode", "RATE_LIMITED")));
       return;
     }
     if (inFlight.incrementAndGet() > 8) {

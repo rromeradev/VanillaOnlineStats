@@ -12,7 +12,7 @@ const suite = enabled ? test : test.skip;
 const serverId = randomUUID(), tenantId = randomUUID(), otherServer = randomUUID(), otherTenant = randomUUID();
 const token = randomBytes(32).toString('base64url'), password = 'Test-only-password-948!';
 let platform, url, pool, schemaName, owner, ws, config;
-const sessions = {};
+const sessions = {}; let observedCalls=0,holdReads=false;const heldReplies=[];
 async function request(path, options = {}, actor = owner) {
   const headers = { 'Content-Type': 'application/json', Origin: config.origin, ...(actor ? { Cookie: actor.cookie, 'X-CSRF-Token': actor.csrf } : {}), ...options.headers };
   return fetch(url + '/api/v1/' + path, { ...options, headers });
@@ -82,14 +82,14 @@ suite('real WebSocket protocol signs exact scoped requests and matches results',
   const publicKey = createPublicKey({ key: Buffer.from(platform.control.publicKey, 'base64'), type: 'spki', format: 'der' });
   ws.on('message', data => {
     const wrapper = JSON.parse(data.toString()), bytes = Buffer.from(wrapper.body, 'base64url'); assert.ok(verify(null, bytes, publicKey, Buffer.from(wrapper.signature, 'base64url')));
-    const body = JSON.parse(bytes.toString()); assert.equal(body.serverId, serverId); assert.equal(body.tenantId, tenantId);
+    const body = JSON.parse(bytes.toString());if(body.kind==='query')observedCalls++; assert.equal(body.serverId, serverId); assert.equal(body.tenantId, tenantId);
     if (body.operation === 'player.authme.login' && body.arguments.password !== 'Dummy-password-no-persistence') {
       ws.send(JSON.stringify({type:'control.result',actionId:body.actionId,auditCorrelationId:body.auditCorrelationId,state:'FAILED',payload:null})); return;
     }
     const payload = ['player.link.redeem','player.authme.login'].includes(body.operation) ? { playerId: sessions.playerId, name: 'Only Me' } : body.operation === 'player.snapshot' ? { uuid: body.arguments.playerId, name: 'Only Me', permissions: ['not-for-player'], address: '127.0.0.1' } : { ok: true };
     if (body.kind === 'action') assert.equal(body.actorRole, 'OWNER');
     if (body.operation === 'player.snapshot') { assert.equal(body.actorRole, 'PLAYER'); assert.equal(body.arguments.playerId, sessions.playerId); }
-    ws.send(JSON.stringify({ type: 'control.result', actionId: body.actionId, auditCorrelationId: body.auditCorrelationId, state: 'SUCCEEDED', payload }));
+    const reply=()=>ws.send(JSON.stringify({ type: 'control.result', actionId: body.actionId, auditCorrelationId: body.auditCorrelationId, state: 'SUCCEEDED', payload }));if(holdReads&&body.kind==='query')heldReplies.push(reply);else reply();
   });
   ws.send(JSON.stringify({ type: 'agent.capabilities', payload: { schemaVersion: 1, playerQueries: true, authmePasswordLogin: true, collectors: ['players','performance'], queries: ['server.snapshot','player.snapshot'], privacy: { players: true }, unsupported: [] } }));
   for (let i=0; i<30; i++) { const server = await platform.db.server(serverId); if (server.capabilities.playerQueries) break; await new Promise(resolve => setTimeout(resolve, 20)); }
@@ -97,6 +97,25 @@ suite('real WebSocket protocol signs exact scoped requests and matches results',
   await post('auth/reauth', { password });
   const action = await post(`servers/${serverId}/actions`, { operation: 'server.console', arguments: { command: 'say hello' }, confirmed: true }); assert.equal((await action.json()).state, 'SUCCEEDED');
   assert.ok((await platform.db.rows('SELECT * FROM vos_audit WHERE server_id=$1', [serverId])).length > 0);
+});
+suite('automatic reads coalesce tabs, cannot execute actions and preserve scope',async()=>{
+  const path=`servers/${serverId}/live?operation=server.snapshot&arguments=%7B%7D`;
+  const beforeCalls=observedCalls,beforeActions=await platform.db.one('SELECT count(*)::int AS n FROM vos_actions');
+  const values=await Promise.all(Array.from({length:32},()=>request(path)));
+  assert.ok(values.every(v=>v.status===200));assert.equal(observedCalls-beforeCalls,1);
+  assert.equal((await platform.db.one('SELECT count(*)::int AS n FROM vos_actions')).n,beforeActions.n);
+  assert.equal((await request(`servers/${serverId}/live?operation=server.broadcast`)).status,400);
+  assert.equal((await request(`servers/${otherServer}/live?operation=server.snapshot`)).status,404);
+  assert.equal((await request(path,{},null)).status,401);
+  assert.equal((await request(`servers/${serverId}/live?operation=server.snapshot&arguments=null`)).status,400);
+});
+suite('continuous reads reserve capacity for commands',async()=>{
+  holdReads=true;const pending=Array.from({length:4},()=>post(`servers/${serverId}/queries`,{operation:'server.snapshot',arguments:{}}));
+  try{
+    const until=Date.now()+5000;while(heldReplies.length<4&&Date.now()<until)await new Promise(r=>setTimeout(r,10));assert.equal(heldReplies.length,4);
+    assert.equal((await request(`servers/${serverId}/live?operation=worlds.list`)).status,429);
+    const action=await post(`servers/${serverId}/actions`,{operation:'world.time',arguments:{worldId:randomUUID(),value:6000},confirmed:true});assert.equal(action.status,200);assert.equal((await action.json()).state,'SUCCEEDED');
+  }finally{holdReads=false;for(const reply of heldReplies.splice(0))reply();await Promise.all(pending);}
 });
 suite('Offline Player password login remains scoped; no administrative access or different player target', async () => {
   sessions.playerId = randomUUID(); await platform.db.rows('UPDATE vos_servers SET player_login=true WHERE id=$1', [serverId]);
@@ -111,12 +130,17 @@ suite('Offline Player password login remains scoped; no administrative access or
   assert.equal((await request(`me/servers/${otherServer}`, {}, player)).status, 403);
   assert.equal((await post(`me/servers/${serverId}/queries`, { operation: 'player.snapshot', arguments: { playerId: randomUUID() } }, player)).status, 400);
   const own = await post(`me/servers/${serverId}/queries`, { operation: 'player.snapshot', arguments: {} }, player); assert.equal(own.status, 200); const data = await own.json(); assert.equal(data.payload.uuid, sessions.playerId); assert.equal(data.payload.address, undefined); assert.equal(data.payload.permissions, undefined);
+  const live=await request(`me/servers/${serverId}/live?operation=player.snapshot`,{},player);
+  assert.equal(live.status,200);const view=await live.json();assert.equal(view.payload.uuid,sessions.playerId);assert.equal(view.payload.address,undefined);assert.equal(view.payload.permissions,undefined);
+  assert.equal((await request(`me/servers/${serverId}/live?operation=server.snapshot`,{},player)).status,403);
+  assert.equal((await request(`me/servers/${serverId}/live?operation=player.snapshot&arguments=${encodeURIComponent(JSON.stringify({playerId:randomUUID()}))}`,{},player)).status,400);
   const disconnect=sample('auth.session.ended',{uuid:sessions.playerId,reason:'disconnect',durationSeconds:40});
   await request('agents/telemetry/batches',{method:'POST',headers:{Authorization:'Bearer '+token},body:JSON.stringify({schemaVersion:1,messages:[disconnect]})},null);
   assert.equal((await request(`me/servers/${serverId}`,{},player)).status,200);
   const logout = sample('auth.session.ended', { uuid: sessions.playerId, durationSeconds: 40 });
   await request('agents/telemetry/batches', { method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: JSON.stringify({ schemaVersion: 1, messages: [logout] }) }, null);
   assert.equal((await request(`me/servers/${serverId}`, {}, player)).status, 401);
+  assert.equal((await request(`me/servers/${serverId}/live?operation=player.snapshot`,{},player)).status,401);
 });
 suite('data remains after reconnect and stale servers are marked offline', async () => {
   await platform.db.rows("UPDATE vos_servers SET last_seen=now()-interval '2 minutes' WHERE id=$1", [serverId]);
@@ -130,9 +154,11 @@ suite('server Admin permissions can be granted and revoked without tenant escala
   assert.equal((await request(`servers/${serverId}/overview`, {}, admin)).status, 200);
   assert.equal((await request(`servers/${otherServer}/overview`, {}, admin)).status, 404);
   assert.equal((await post(`servers/${serverId}/actions`, { operation: 'server.console', arguments: { command: 'say no' }, confirmed: true }, admin)).status, 403);
+  assert.equal((await request(`servers/${serverId}/live?operation=server.snapshot`,{},admin)).status,200);
   const members = await (await request(`servers/${serverId}/members`)).json();
   assert.equal((await request(`servers/${serverId}/members/${members[0].id}`, { method: 'DELETE' })).status, 200);
   assert.equal((await request(`servers/${serverId}/overview`, {}, admin)).status, 404);
+  assert.equal((await request(`servers/${serverId}/live?operation=server.snapshot`,{},admin)).status,404);
 });
 suite('API restart preserves sessions and telemetry; password change revokes other sessions', async () => {
   const second = await login(config.ownerEmail, password);

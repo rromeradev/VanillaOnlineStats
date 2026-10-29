@@ -1,7 +1,7 @@
 plugins { java }
 
 group = "dev.vanillaonlinestats"
-version = "0.4.0"
+version = "0.4.1"
 
 repositories {
     mavenCentral()

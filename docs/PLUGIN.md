@@ -1,6 +1,6 @@
 # Plugin Paper/AuthMe
 
-Versão atual: **0.4.0**, integrada à plataforma 0.5.0. Baseline: Paper 26.3 build 227, Java 25 e AuthMe 6.0.1-b2770. As funcionalidades abaixo são a cobertura atual, não uma promessa de todas as funções da especificação.
+Versão atual: **0.4.1**, integrada à plataforma 0.5.1. Baseline: Paper 26.3 build 227, Java 25 e AuthMe 6.0.1-b2770. As funcionalidades abaixo são a cobertura atual, não uma promessa de todas as funções da especificação.
 
 ## Instalação
 
@@ -75,7 +75,9 @@ Use `vos status`, `vos collectors`, `vos capabilities` e `vos queue`. No console
 
 ## Configuração de telemetria e controle
 
-Na plataforma 0.5.0, o painel recebe notificações SSE autenticadas e atualiza os dados automaticamente. O plugin 0.4.0 envia o estado dos jogadores autenticados a cada segundo, com rotação e orçamento de coleta. Eventos continuam sujeitos à fila e à disponibilidade da rede; não há garantia de latência fixa. Consultas de inventário/estatísticas/conquistas continuam sob demanda e exigem jogador online e autenticado.
+Na plataforma 0.5.1, o painel recebe notificações SSE autenticadas e acompanha os dados automaticamente, sem botões de atualização. O plugin 0.4.1 envia desempenho, mundos e jogadores autenticados a cada segundo, com rotação e orçamento de coleta. Eventos continuam sujeitos à fila e à disponibilidade da rede; não há garantia de latência fixa. Inventário, estatísticas e conquistas são consultados automaticamente enquanto a respectiva tela está visível e exigem jogador online e autenticado. As páginas seguintes são navegação; a página selecionada também é atualizada automaticamente.
+
+Leituras automáticas usam rotas GET autenticadas, assinatura Ed25519 no agente e cache de até 900 ms compartilhado por ator/alvo/argumentos. As permissões são verificadas em cada acesso, inclusive ao cache. São até 90 leituras nativas por ator/minuto e 600 por servidor/minuto, com até quatro consultas pendentes e seis solicitações totais na API, reservando capacidade para comandos, e oito no agente. Ao atingir limites ou perder a conexão, o painel tenta novamente com espera progressiva. A observação contínua é auditada ao iniciar e a cada minuto; cada leitura automática não cria um comando persistente. As ações mantêm os limites e as confirmações anteriores e nunca se repetem automaticamente.
 
 Para habilitar um aviso administrativo, ajuste localmente a seção existente, preservando endpoint, tenant-id e public-key:
 
@@ -102,7 +104,7 @@ Auditoria em control-audit.jsonl e um segmento anterior, até cerca de 16 MiB to
 
 ## Protocolo do controle
 
-WebSocket usa Authorization Bearer na abertura; primeiro envia `agent.capabilities`. Entrada: `{"body":"BASE64URL_BYTES_JSON","signature":"BASE64URL_ED25519"}`. Assine os bytes exatos decodificados de body, não o wrapper nem uma serialização diferente. Limite: 32 KiB no corpo, 64 KiB no frame lógico, 30 solicitações/minuto, oito solicitações em execução.
+WebSocket usa Authorization Bearer na abertura; primeiro envia `agent.capabilities`. Entrada: `{"body":"BASE64URL_BYTES_JSON","signature":"BASE64URL_ED25519"}`. Assine os bytes exatos decodificados de body, não o wrapper nem uma serialização diferente. Limite: 32 KiB no corpo, 64 KiB no frame lógico, 30 ações/logins por minuto e 600 consultas por minuto, oito solicitações em execução.
 
 O corpo segue packages/api-contracts/control-body.schema.json. O TTL máximo é 30s. Resultado: `control.result` com actionId, auditCorrelationId, state e payload. Estados finais SUCCEEDED/FAILED/REJECTED/EXPIRED; PENDING é persistido antes da execução. Mensagens inválidas recebem control.rejected sem ecoar conteúdo.
 

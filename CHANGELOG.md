@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.1 — 2026-10-29
+
+- Todas as telas carregam automaticamente; removidos os botões de atualizar e de iniciar consultas de inventário, estatísticas e conquistas.
+- Consultas administrativas acompanham automaticamente a operação e o alvo selecionados; ações continuam exigindo confirmação explícita.
+- Atualizações continuam com detalhes abertos; formulários em edição são preservados e abas ocultas suspendem leituras automáticas.
+- Leituras assinadas possuem orçamento independente de ações, cache compartilhado entre abas, auditoria agrupada por observação e recuperação automática com espera progressiva.
+- Plugin 0.4.1: desempenho e mundos coletados a cada segundo com amostragem limitada; limites separados para consultas e mutações.
+
 ## 0.5.0 — 2026-10-29
 
 - Plugin 0.4.0: snapshots de jogadores autenticados a cada segundo, limitados pelo orçamento de coleta.
