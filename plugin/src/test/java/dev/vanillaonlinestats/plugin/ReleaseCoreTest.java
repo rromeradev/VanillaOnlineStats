@@ -76,6 +76,28 @@ class ReleaseCoreTest {
   }
 
   @Test
+  void playerCanOnlyUseTheExplicitConfirmedSelfSkinOperation() throws Exception {
+    var request = body();
+    request.addProperty("actorRole", "PLAYER");
+    request.addProperty("kind", "skin");
+    request.addProperty("operation", "player.skin.set");
+    request.addProperty("riskLevel", "MEDIUM");
+    request.addProperty("confirmed", true);
+    assertEquals("skin", verifier().verify(sign(request), Instant.now()).kind());
+    request.addProperty("actorRole", "ADMIN");
+    assertThrows(
+        GeneralSecurityException.class, () -> verifier().verify(sign(request), Instant.now()));
+    request.addProperty("actorRole", "PLAYER");
+    request.addProperty("confirmed", false);
+    assertThrows(
+        GeneralSecurityException.class, () -> verifier().verify(sign(request), Instant.now()));
+    request.addProperty("confirmed", true);
+    request.addProperty("operation", "player.inventory.clear");
+    assertThrows(
+        GeneralSecurityException.class, () -> verifier().verify(sign(request), Instant.now()));
+  }
+
+  @Test
   void rejectsForgedExpiredCrossTenantCrossServerAndPlayerControl() throws Exception {
     ControlSecurity security = verifier();
     JsonObject valid = body();

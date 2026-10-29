@@ -56,7 +56,8 @@
         "query",
         "action",
         "link",
-        "watch"
+        "watch",
+        "skin"
       ]
     },
     "arguments": {
@@ -172,6 +173,22 @@
                 }
               }
             }
+          },
+          {
+            "properties": {
+              "kind": {
+                "const": "skin"
+              },
+              "operation": {
+                "const": "player.skin.set"
+              },
+              "riskLevel": {
+                "const": "MEDIUM"
+              },
+              "confirmed": {
+                "const": true
+              }
+            }
           }
         ]
       }
@@ -235,6 +252,73 @@
               "server.bans",
               "server.operators",
               "server.whitelist"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "skin"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "actorRole": {
+            "const": "PLAYER"
+          },
+          "operation": {
+            "const": "player.skin.set"
+          },
+          "riskLevel": {
+            "const": "MEDIUM"
+          },
+          "confirmed": {
+            "const": true
+          },
+          "arguments": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "value",
+                  "signature"
+                ],
+                "properties": {
+                  "value": {
+                    "type": "string",
+                    "maxLength": 4096
+                  },
+                  "signature": {
+                    "type": "string",
+                    "maxLength": 2048
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "png",
+                  "model"
+                ],
+                "properties": {
+                  "png": {
+                    "type": "string",
+                    "maxLength": 27308
+                  },
+                  "model": {
+                    "enum": [
+                      "classic",
+                      "slim"
+                    ]
+                  }
+                }
+              }
             ]
           }
         }

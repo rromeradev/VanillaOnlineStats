@@ -27,13 +27,14 @@ export class PlayerHead implements AfterViewInit,OnChanges,OnDestroy {
 }
 @Component({selector:'vos-skin',template:`<div class="skin-model"><canvas #canvas [hidden]="!ready()" role="img" [attr.aria-label]="'Modelo 3D de '+name"></canvas>@if(ready()){<div class="skin-controls"><button type="button" (click)="rotate(-.4)" aria-label="Girar para a esquerda">↶</button><span>Arraste para girar</span><button type="button" (click)="rotate(.4)" aria-label="Girar para a direita">↷</button></div>}@else{<div class="skin-empty"><span>♟</span><small>{{message()}}</small></div>}</div>`})
 export class PlayerModel implements AfterViewInit,OnChanges,OnDestroy {
+  @Input() previewUrl='';
   @Input() skin:any;@Input() name='';@ViewChild('canvas') canvas?:ElementRef<HTMLCanvasElement>;
   ready=signal(false);message=signal('Skin ainda não observada');private viewer:any;private observer?:IntersectionObserver;private visible=false;private version=0;private alive=true;private loaded='';
   ngAfterViewInit(){this.observer=new IntersectionObserver(entries=>{this.visible=entries[0].isIntersecting;if(this.viewer)this.viewer.renderPaused=!this.visible;if(this.visible)void this.load();});this.observer.observe(this.canvas!.nativeElement.parentElement!);}
   ngOnChanges(){if(this.visible)void this.load();}
   ngOnDestroy(){this.alive=false;this.version++;this.observer?.disconnect();this.viewer?.dispose();}
   rotate(amount:number){if(this.viewer)this.viewer.playerObject.rotation.y+=amount;}
-  private async load(){const url=skinUrl(this.skin),key=url+':'+this.skin?.model;if(!url){this.version++;this.loaded='';if(this.viewer)this.viewer.renderPaused=true;this.ready.set(false);this.message.set('Skin ainda não observada');return;}if(this.loaded===key)return;this.loaded=key;const version=++this.version;this.ready.set(false);this.viewer?.dispose();this.viewer=undefined;
+  private async load(){const url=this.previewUrl.startsWith('blob:')?this.previewUrl:skinUrl(this.skin),key=url+':'+this.skin?.model;if(!url){this.version++;this.loaded='';if(this.viewer)this.viewer.renderPaused=true;this.ready.set(false);this.message.set('Skin ainda não observada');return;}if(this.loaded===key)return;this.loaded=key;const version=++this.version;this.ready.set(false);this.viewer?.dispose();this.viewer=undefined;
     try{const {SkinViewer}=await import('skinview3d');if(!this.alive||version!==this.version)return;
       if(!this.viewer){this.viewer=new SkinViewer({canvas:this.canvas!.nativeElement,width:240,height:290,zoom:.85});this.viewer.controls.enableZoom=false;this.viewer.controls.enablePan=false;this.viewer.autoRotate=false;}
       const viewer=this.viewer;await viewer.loadSkin(url,{model:this.skin?.model==='slim'?'slim':'default'});if(!this.alive||version!==this.version)return;viewer.renderPaused=!this.visible;this.ready.set(true);

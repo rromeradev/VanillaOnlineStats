@@ -92,6 +92,11 @@ final class ControlSecurity {
       }
       if (!Set.of("ADMIN", "OWNER").contains(role)
           && !(role.equals("PLAYER")
+              && kind.equals("skin")
+              && operation.equals("player.skin.set")
+              && risk.equals("MEDIUM")
+              && value.get("confirmed").getAsBoolean())
+          && !(role.equals("PLAYER")
               && kind.equals("link")
               && Set.of("player.link.redeem", "player.authme.login").contains(operation))
           && !(role.equals("PLAYER")
@@ -111,12 +116,18 @@ final class ControlSecurity {
                               : value.getAsJsonObject("arguments"))
                           .get("playerId")
                           .getAsString()))) throw new GeneralSecurityException("role");
-      if (!Set.of("query", "action", "link", "watch").contains(kind)
+      if (!Set.of("query", "action", "link", "watch", "skin").contains(kind)
           || !operation.matches("[a-z][a-z0-9.-]{1,63}")
           || !Set.of("LOW", "MEDIUM", "HIGH").contains(risk))
         throw new GeneralSecurityException("operation");
       if (!value.get("confirmed").getAsJsonPrimitive().isBoolean())
         throw new GeneralSecurityException("confirmation");
+      if (kind.equals("skin")
+          && (!role.equals("PLAYER")
+              || !operation.equals("player.skin.set")
+              || !risk.equals("MEDIUM")
+              || !value.get("confirmed").getAsBoolean()))
+        throw new GeneralSecurityException("self skin only");
       if (kind.equals("watch")
           && (!LiveWatches.QUERIES.contains(operation)
               || !risk.equals("LOW")

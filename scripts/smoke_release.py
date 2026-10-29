@@ -19,7 +19,7 @@ from websockets.sync.server import serve
 from jsonschema import Draft202012Validator, FormatChecker
 
 parser = argparse.ArgumentParser()
-for name in ('java', 'paper', 'authme', 'plugin', 'output'):
+for name in ('java', 'paper', 'authme', 'skinsrestorer', 'plugin', 'output'):
     parser.add_argument('--' + name, required=True)
 parser.add_argument('--accept-eula', action='store_true')
 parser.add_argument('--cache')
@@ -36,6 +36,7 @@ if args.cache:
             shutil.copytree(source, root / folder)
 shutil.copyfile(args.paper, root / 'paper.jar')
 shutil.copyfile(args.authme, root / 'plugins/AuthMe.jar')
+shutil.copyfile(args.skinsrestorer, root / 'plugins/SkinsRestorer.jar')
 shutil.copyfile(args.plugin, root / 'plugins/VanillaOnlineStats.jar')
 server_id, tenant_id = str(uuid.uuid4()), str(uuid.uuid4())
 token = secrets.token_urlsafe(32)

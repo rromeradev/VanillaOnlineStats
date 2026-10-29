@@ -13,6 +13,7 @@ import { Database, Server, Session } from './database';
 import { PlatformConfig } from './platform-config';
 import { seedDemo } from './demo';
 import { Visuals } from './visuals';
+import {SkinCatalog,skinUpload} from './skins';
 import {PanelStream,PanelView} from './panel-stream';
 import { ACTIONS, QUERIES, Control, argumentsFor } from './control';
 import { UUID, Limits, canonical, csrf, fail, fields, id, opaque, passwordHash, passwordMatches, same, sha, text } from './security';
@@ -37,7 +38,7 @@ export async function createPlatform(config: PlatformConfig) {
     await db.rows(`INSERT INTO vos_servers(id,tenant_id,name,agent_hash) VALUES($1,$2,'Servidor Paper',$3) ON CONFLICT(id) DO NOTHING`, [config.initialServerId, config.tenantId, config.initialAgentHash]);
   }
   if (config.demo) await seedDemo(db, config.tenantId);
-  const visuals=new Visuals(); const limits = new Limits(), ajv = new Ajv2020({ strict: true }); addFormats(ajv);
+  const visuals=new Visuals(); const skinCatalog=new SkinCatalog(); const limits = new Limits(), ajv = new Ajv2020({ strict: true }); addFormats(ajv);
   const schema = (name: string) => JSON.parse(readFileSync(resolve(__dirname, '../../../packages/api-contracts/' + name + '.schema.json'), 'utf8'));
   const heartbeatValidator = ajv.compile(schema('heartbeat')), envelopeValidator = ajv.compile(schema('telemetry-envelope'));
   const cookieSecure = config.origin.startsWith('https:'); let control: Control;
@@ -86,7 +87,8 @@ export async function createPlatform(config: PlatformConfig) {
   async function selfData(actor:Session,server:Server){
     const [profiles,skins,events]=await Promise.all([db.latest(server,'player',actor.actor_id),db.latest(server,'skin',actor.actor_id),db.history(server,null,new Date(Date.now()-7*86400_000),200,actor.actor_id,true)]);
     const observed=profiles[0]?.payload.skin,skin=skins[0]&&(!observed?.textureHash||skins[0].occurredAt>profiles[0].occurredAt)?skins[0].payload:observed;
-    return {server:safeServer(server),skin,profile:profiles[0]?{...profiles[0],payload:sanitizePlayer(profiles[0].payload)}:null,events:events.map(safeEvent)};
+    const savedEvents=await db.latest(server,'player-events',actor.actor_id);
+    return {server:safeServer(server),skin,profile:profiles[0]?{...profiles[0],payload:sanitizePlayer(profiles[0].payload)}:null,events:(savedEvents[0]?.payload.items??events).map(safeEvent)};
   }
   async function panelView(actor:Session,value:any):Promise<PanelView>{
     fields(value,['type','id','serverId','section','hours','query']);if(value.type!=='subscribe'||!Number.isSafeInteger(value.id)||value.id<1)fail(400);
@@ -122,6 +124,7 @@ export async function createPlatform(config: PlatformConfig) {
   function panelDelta(view:PanelView,messages:any[]){
     if(view.actor.kind==='ADMIN')return messages.map(entry=>({type:'telemetry',entry}));
     const packets:any[]=[];for(const entry of messages){
+      if(entry.type==='player.saved.snapshot'&&entry.payload.uuid===view.actor.actor_id&&view.query&&entry.payload.operation===view.query.operation&&(entry.payload.arguments?.offset??0)===(view.query.args.offset??0)){packets.push({type:'query',result:{state:'SUCCEEDED',payload:sanitizePlayer(entry.payload.data),observedAt:entry.occurredAt,saved:true}});continue;}
       if(['players.snapshot','players.live.snapshot'].includes(entry.type)){const item=entry.payload.items?.find((p:any)=>p.uuid===view.actor.actor_id);if(item)packets.push({type:'player',profile:{id:item.uuid,occurredAt:entry.occurredAt,payload:sanitizePlayer(item)}});}
       else if(entry.payload.uuid===view.actor.actor_id&&!technical(entry.type))packets.push({type:'event',entry:safeEvent({id:entry.messageId,type:entry.type,occurredAt:entry.occurredAt,payload:entry.payload})});
     }return packets;
@@ -306,13 +309,7 @@ export async function createPlatform(config: PlatformConfig) {
     }
     @Get('me/servers/:serverId') async playerData(@Req() req: Request, @Param('serverId') serverId: string) {
       const { actor, server } = await scopedPlayer(req, id(serverId));
-      const profiles = await db.latest(server, 'player', actor.actor_id);
-      const skin=await db.latest(server,'skin',actor.actor_id);
-      const events = await db.history(server, null, new Date(Date.now() - 7 * 86400_000), 200, actor.actor_id);
-      const safeEvents = events.map(event => ({ ...event, payload: Object.fromEntries(Object.entries(event.payload).filter(([key]) => ['durationSeconds','reason','Cause','Reason','Amount','Damage','FinalDamage','ExpToDrop','NewLevel','OldLevel','PreviousValue','NewValue','Statistic','advancement','root'].includes(key))) }));
-      const observed=profiles[0]?.payload.skin;
-      const effective=skin[0]&&(!observed?.textureHash||skin[0].occurredAt>profiles[0].occurredAt)?skin[0].payload:observed;
-      return { server: safeServer(server), skin:effective, profile: profiles[0] ? { ...profiles[0], payload: sanitizePlayer(profiles[0].payload) } : null, events: safeEvents };
+      return selfData(actor,server);
     }
     @Post('me/servers/:serverId/queries') @HttpCode(200)
     async playerQuery(@Req() req: Request, @Param('serverId') serverId: string, @Body() body: any) {
@@ -320,8 +317,27 @@ export async function createPlatform(config: PlatformConfig) {
       const operation = text(body.operation, 64); if (!['player.snapshot','player.inventory','player.statistics','player.advancements'].includes(operation)) fail(403);
       const args = body.arguments ?? {}; fields(args, ['offset','statistic','material','entityType']);
       if (!server.capabilities?.playerQueries) fail(409);
+      const saved=await db.savedPlayer(server,actor.actor_id,operation,args);
+      if(!control.connected(server.id)&&saved)return saved;
       const result = await control.request(server, actor, operation, argumentsFor(operation, { ...args, playerId: actor.actor_id }, 'query'), 'query');
+      if(result.state!=='SUCCEEDED'&&saved)return saved;
       if (result.payload) result.payload = sanitizePlayer(result.payload); return result;
+    }
+    @Get('me/servers/:serverId/skins') async skins(@Req() req:Request,@Param('serverId') serverId:string){
+      await scopedPlayer(req,id(serverId));return {source:'MineSkin',items:await skinCatalog.popular()};
+    }
+    @Post('me/servers/:serverId/skin') @HttpCode(200) async changeSkin(@Req() req:Request,@Param('serverId') serverId:string,@Body() body:any){
+      await mutation(req);const {actor,server}=await scopedPlayer(req,id(serverId));fields(body,['id','png','model']);
+      limits.check('skin:'+server.id+':'+actor.actor_id,2);
+      if(!control.connected(server.id))fail(503);
+      if(!server.capabilities?.skinChanges)fail(409);
+      let args:any;
+      if(body.id!==undefined){if(Object.keys(body).length!==1)fail(400);args=await skinCatalog.property(text(body.id,32,32));}
+      else {if(!['classic','slim'].includes(body.model))fail(400);args={png:skinUpload(body.png),model:body.model};}
+      const result=await control.request(server,actor,'player.skin.set',args,'skin',true);
+      if(result.state==='SUCCEEDED'&&result.payload?.saved&&/^[a-f0-9]{32,64}$/.test(result.payload.skin?.textureHash??'')){
+        await db.rows(`INSERT INTO vos_latest(tenant_id,server_id,kind,entity_id,occurred_at,encrypted_payload) VALUES($1,$2,'skin',$3,now(),$4) ON CONFLICT(tenant_id,server_id,kind,entity_id) DO UPDATE SET occurred_at=EXCLUDED.occurred_at,encrypted_payload=EXCLUDED.encrypted_payload`,[server.tenant_id,server.id,actor.actor_id,db.vault.seal(result.payload.skin,db.context(server))]);db.notify(server.id);
+      }return result;
     }
     @Post('me/servers/:serverId/privacy-requests') async privacy(@Req() req: Request, @Param('serverId') serverId: string, @Body() body: any) {
       await mutation(req); const { actor, server } = await scopedPlayer(req, id(serverId)); fields(body, ['kind']); if (!['DELETE','EXPORT'].includes(body.kind)) fail(400);
@@ -344,7 +360,7 @@ export async function createPlatform(config: PlatformConfig) {
     if(until<Date.now())rateSessions.delete(hash);
     try { limits.check('http:' + (until>Date.now()?hash:req.socket.remoteAddress), 1200); } catch { res.status(429).json({ message: 'Limite de solicitações.' }); return; }
     res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Referrer-Policy', 'same-origin');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://blocksitems.com; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://blocksitems.com; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
     next();
   });
   app.use(json({ limit: '9mb', strict: true, inflate: false }));

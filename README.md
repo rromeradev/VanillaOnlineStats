@@ -2,7 +2,7 @@
 
 Painel web e API para servidores Minecraft Paper, com integração AuthMe e áreas Owner/Admin e Player. O painel oferece temas claro, escuro e automático pelo sistema.
 
-**Versões:** plataforma 0.6.0, plugin 0.5.0. **Baseline:** Paper 26.3 build 227, Java 25 e AuthMe 6.0.1-b2770.
+**Versões:** plataforma 0.7.0, plugin 0.6.0. **Baseline:** Paper 26.3 build 227, Java 25, AuthMe 6.0.1-b2770 e SkinsRestorer 15.12.6.
 
 ## Deploy no Coolify 4.5.3
 

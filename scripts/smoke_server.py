@@ -16,6 +16,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--java", required=True)
 parser.add_argument("--paper", required=True)
 parser.add_argument("--authme", required=True)
+parser.add_argument("--skinsrestorer", required=True)
 parser.add_argument("--plugin", required=True)
 parser.add_argument("--output", required=True)
 parser.add_argument("--accept-eula", action="store_true")
@@ -25,18 +26,20 @@ args = parser.parse_args()
 if not args.accept_eula:
     parser.error("Read https://aka.ms/MinecraftEULA and pass --accept-eula to run a test server")
 
-for with_authme in (True, False):
-    root = pathlib.Path(args.output).resolve() / ("with-authme" if with_authme else "without-authme")
+for with_authme, with_skins in ((True, True), (False, True), (True, False)):
+    root = pathlib.Path(args.output).resolve() / ("without-skinsrestorer" if not with_skins else "with-authme" if with_authme else "without-authme")
     root.mkdir(parents=True, exist_ok=False)
     (root / "plugins").mkdir()
     shutil.copyfile(args.paper, root / "paper.jar")
+    if with_skins:
+        shutil.copyfile(args.skinsrestorer, root / "plugins/SkinsRestorer.jar")
     shutil.copyfile(args.plugin, root / "plugins/VanillaOnlineStats.jar")
     if with_authme:
         shutil.copyfile(args.authme, root / "plugins/AuthMe.jar")
     api = None
     environment = os.environ.copy()
     api_log = (root / "api.log").open("w", encoding="utf-8")
-    if with_authme and args.heartbeat:
+    if with_authme and with_skins and args.heartbeat:
         server_id = str(uuid.uuid4())
         token = secrets.token_urlsafe(32)
         environment.update(VOS_LEGACY_MODE='1', VOS_AGENT_TOKEN=token, VOS_AGENT_SERVER_ID=server_id,
@@ -131,7 +134,7 @@ for with_authme in (True, False):
                 output.write(line)
                 output.flush()
                 if 'Done (' in line:
-                    if with_authme and args.heartbeat:
+                    if with_authme and with_skins and args.heartbeat:
                         controller = threading.Thread(target=heartbeat_checks, daemon=True)
                         controller.start()
                     else:
@@ -153,7 +156,7 @@ for with_authme in (True, False):
     assert not timed_out.is_set(), f"Server timeout: {root}"
     assert code == 0, f"Server exit {code}: {root}"
     assert 'Done (' in log, f"Server did not start: {root}"
-    if with_authme:
+    if with_authme and with_skins:
         assert 'Bootstrap pronto; AuthMe API disponivel' in log, f"Plugin not enabled: {root}"
         assert 'API local OK | serverId=' in log, f"Status command failed: {root}"
         if args.heartbeat:
@@ -164,5 +167,5 @@ for with_authme in (True, False):
             assert 'heartbeat=desativado' in log
     else:
         assert 'Bootstrap pronto; AuthMe API disponivel' not in log
-        assert 'UnknownDependencyException' in log and 'AuthMe' in log, f"Missing dependency not rejected: {root}"
+        assert 'UnknownDependencyException' in log and ('AuthMe' if not with_authme else 'SkinsRestorer') in log, f"Missing dependency not rejected: {root}"
     print(f"PASS: {root.name}", flush=True)

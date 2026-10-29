@@ -71,6 +71,23 @@ export class Database {
         ON CONFLICT(tenant_id,server_id,kind,entity_id) DO UPDATE SET occurred_at=EXCLUDED.occurred_at,encrypted_payload=EXCLUDED.encrypted_payload WHERE vos_latest.occurred_at<=EXCLUDED.occurred_at`,
         [server.tenant_id, server.id, kind, entity, entry.occurredAt, this.vault.seal(payload, this.context(server))]);
     };
+    if(entry.type==='player.saved.snapshot'){
+      const p=entry.payload;
+      if(!UUID.test(p.uuid??'')||!['player.inventory','player.statistics','player.advancements'].includes(p.operation)||!p.data||typeof p.data!=='object')fail(400);
+      const offset=p.arguments?.offset??0;if(!Number.isSafeInteger(offset)||offset<0||offset>10000)fail(400);
+      if(p.data.uuid&&p.data.uuid!==p.uuid)fail(400);
+      await update('player-query',p.uuid+':'+p.operation+':'+offset,p.data);
+      return;
+    }
+    const playerId=entry.payload.uuid;
+    if(UUID.test(playerId??'')&&!entry.type.endsWith('.snapshot')&&!['server.heartbeat','events.counters','chunks.sample','host.filesystem','integrations.status'].includes(entry.type)){
+      const row=(await client.query("SELECT occurred_at,encrypted_payload FROM vos_latest WHERE tenant_id=$1 AND server_id=$2 AND kind='player-events' AND entity_id=$3",[server.tenant_id,server.id,playerId])).rows[0];
+      if(!row||Date.parse(entry.occurredAt)>=new Date(row.occurred_at).getTime()){
+        const items=entry.type==='auth.session.started'?[]:(row?this.vault.open(row.encrypted_payload,this.context(server)).items:[]);
+        items.push({id:entry.messageId,type:entry.type,occurredAt:entry.occurredAt,payload:entry.payload});
+        await update('player-events',playerId,{items:items.slice(-200)});
+      }
+    }
     if (entry.type.endsWith('.snapshot') || ['server.heartbeat','events.counters','chunks.sample','integrations.status','host.filesystem'].includes(entry.type)) await update('snapshot', entry.type, entry.payload);
     if (entry.type === 'players.snapshot' || entry.type === 'players.live.snapshot' || entry.type === 'worlds.snapshot') {
       for (const item of entry.payload.items ?? []) {
@@ -109,8 +126,14 @@ export class Database {
     await this.rows('DELETE FROM vos_sessions WHERE expires_at<now()');
     await this.rows("UPDATE vos_actions SET state='UNKNOWN' WHERE state IN ('PENDING','RUNNING') AND expires_at<now()");
     await this.rows("DELETE FROM vos_messages WHERE received_at<now()-interval '30 days'");
-    await this.rows("DELETE FROM vos_latest WHERE occurred_at<now()-interval '7 days'");
+    await this.rows("DELETE FROM vos_latest WHERE kind NOT IN ('player','player-query','player-events','skin') AND occurred_at<now()-interval '7 days'");
     await this.rows("UPDATE vos_actions SET encrypted_result=NULL WHERE created_at<now()-interval '7 days'");
+  }
+  async savedPlayer(server:Server,playerId:string,operation:string,args:any={}){
+    const rows=await this.latest(server,operation==='player.snapshot'?'player':'player-query',operation==='player.snapshot'?playerId:playerId+':'+operation+':'+(args.offset??0));
+    if(!rows[0]||args.statistic)return null;
+    const payload=structuredClone(rows[0].payload);delete payload.address;delete payload.permissions;
+    return {state:'SUCCEEDED',payload,observedAt:rows[0].occurredAt,saved:true};
   }
   async close() { await this.pool.end(); }
 }

@@ -1,6 +1,6 @@
 # Plugin Paper/AuthMe
 
-Versão atual: **0.5.0**, integrada à plataforma 0.6.0. Baseline: Paper 26.3 build 227, Java 25 e AuthMe 6.0.1-b2770. As funcionalidades abaixo são a cobertura atual, não uma promessa de todas as funções da especificação.
+Versão atual: **0.6.0**, integrada à plataforma 0.7.0. Baseline: Paper 26.3 build 227, Java 25, AuthMe 6.0.1-b2770 e SkinsRestorer 15.12.6. As funcionalidades abaixo são a cobertura atual, não uma promessa de todas as funções da especificação.
 
 ## Instalação
 
@@ -75,11 +75,11 @@ Use `vos status`, `vos collectors`, `vos capabilities` e `vos queue`. No console
 
 ## Configuração de telemetria e controle
 
-Na plataforma 0.6.0, o painel mantém uma conexão WebSocket autenticada em `/api/v1/panel`. Recebe o estado inicial e depois os eventos/projeções alterados, sem polling HTTP, sem SSE de invalidação e sem consultas repetidas ao agente. Trocar a tela ou os argumentos troca a assinatura; ocultar a aba a pausa. Ao reconectar, o estado é ressincronizado uma vez.
+Na plataforma 0.7.0, o painel mantém uma conexão WebSocket autenticada em `/api/v1/panel`. Recebe o estado inicial e depois os eventos/projeções alterados, sem polling HTTP, sem SSE de invalidação e sem consultas repetidas ao agente. Trocar a tela ou os argumentos troca a assinatura; ocultar a aba a pausa. Ao reconectar, o estado é ressincronizado uma vez.
 
 Inventário, estatísticas, conquistas e consultas administrativas usam assinaturas Ed25519 `kind: watch`, exclusivamente de leitura. O plugin observa os alvos na thread principal e envia `watch.update` somente quando o resultado muda. O agendamento tem intervalo mínimo de 200 ms por assinatura, rotação, até quatro amostras por tick e orçamento local; não há garantia de latência fixa sob carga/rede. São até 64 assinaturas por agente, compartilhadas entre abas do mesmo ator/alvo. Cada assinatura tem lease de 75 s renovado por frame assinado a cada 30 s. Cancelar a assinatura ou desconectar a API encerra a coleta. As permissões locais e a autenticação do jogador são verificadas em cada amostra.
 
-A telemetria passa pelo mesmo WSS do agente, com ACK dos envelopes após commit no PostgreSQL. Enquanto esse transporte está negociado, o emissor HTTP de lotes fica suspenso. Se o WSS do agente cair, a fila conserva o funcionamento HTTP anterior até reconectar; esse mecanismo não cria consultas HTTP no navegador. `telemetry.endpoint` deve continuar configurado para habilitar o envio. Inventário e consultas próprias exigem personagem online/autenticado e a política de privacidade correspondente.
+A telemetria passa pelo mesmo WSS do agente, com ACK dos envelopes após commit no PostgreSQL. Enquanto esse transporte está negociado, o emissor HTTP de lotes fica suspenso. Se o WSS do agente cair, a fila conserva o funcionamento HTTP anterior até reconectar; esse mecanismo não cria consultas HTTP no navegador. `telemetry.endpoint` deve continuar configurado para habilitar o envio. A coleta exige personagem autenticado e a política de privacidade correspondente. O painel também mostra os últimos dados salvos quando o jogador está offline.
 
 O painel verifica cookie, Origin exato, tenant/servidor e permissões ao assinar e antes de entregar dados. São até quatro conexões por sessão, frames recebidos limitados e encerramento de consumidores lentos. Revogação de acesso/sessão impede novas entregas. Heartbeats de conexão e renovações de lease não são consultas de dados. Ações continuam separadas, com confirmação e allowlist, e nunca são repetidas automaticamente.
 
@@ -115,3 +115,17 @@ O corpo segue packages/api-contracts/control-body.schema.json. O TTL máximo é 
 Consulta: kind=query; operation é uma das operações de vos capabilities; arguments contém worldId/playerId/entityId conforme a consulta. Ação: kind=action; operação explicitamente permitida. Link: kind=link, operation=player.link.redeem, arguments.code; o código é gerado por `/vos link` e expira em 120s, é revogado no logout e só pode ser usado uma vez. Não registre esse código em filas duráveis ou logs do backend.
 
 O simulador scripts/smoke_release.py é a referência executável do protocolo. Ele não é uma API de produção e não deve ser exposto publicamente.
+
+## Última sessão e edição de skin
+
+SkinsRestorer **15.12.6** é dependência obrigatória (`depend`), usando sua API pública como `compileOnly`; o JAR não é incorporado. Instale-o antes de atualizar este plugin. Preserve os dados do SkinsRestorer para manter as escolhas após reinícios.
+
+Com `privacy.player-state: true`, o agente salva automaticamente estado, páginas de estatísticas gerais e conquistas, mesmo sem painel aberto. `privacy.inventories: true` também salva inventário e Ender Chest. A coleta é distribuída na thread principal; páginas são deduplicadas, com checkpoint de recuperação de no máximo um minuto para páginas inalteradas. A saída captura os últimos valores autenticados. Estado, páginas, skin e os últimos 200 eventos da sessão são criptografados no PostgreSQL e não expiram automaticamente. A próxima sessão atualiza o estado e inicia uma nova lista de eventos. Dados que nunca foram coletados não podem ser recuperados retroativamente. Consultas administrativas continuam com a semântica de leitura ao vivo.
+
+Em **Visão geral → Sua aparência no servidor → Editar minha skin**, o jogador escolhe uma skin popular ou envia seu PNG. O arquivo deve ter 64×64 ou 64×32 pixels, até 1 MB na seleção; o navegador o reencoda, remove metadados e envia até 20 KiB. Escolha modelo clássico/slim para uploads. A consulta ao catálogo é feita no backend com cache de uma hora, sem polling. Erros do catálogo não impedem uploads.
+
+O mapeamento do [NameMC](https://pt.namemc.com/minecraft-skins) identificou galeria de tendências, cartões e detalhes `/skin/<id>`, mas as consultas automatizadas retornaram HTTP 403. Não há contorno desse bloqueio. Conforme a alternativa autorizada, a galeria usa a rota pública [MineSkin `/v2/skins/popular`](https://github.com/MineSkin/api.mineskin.org/blob/master/src/routes/v2/skins.ts), identificada como MineSkin na interface. Rankings não são atribuídos ao NameMC.
+
+A alteração própria usa uma operação assinada separada `kind: skin`, `player.skin.set`, limitada ao ator da sessão, sem conceder comandos administrativos. Não é preciso ativar `writes-enabled`, `console-enabled` nem adicionar a operação à allowlist administrativa. Confirmação explícita no botão Aplicar, limite de duas solicitações/minuto por jogador e uma geração simultânea no agente. O PNG é validado novamente no plugin antes da assinatura pelo MineSkin via SkinsRestorer. A geração depende da conexão com esse serviço e pode aguardar a fila; `api.mineskinAPIKey` no SkinsRestorer é opcional conforme seu plano/configuração ([documentação](https://skinsrestorer.net/docs/integrations/mineskin)). Nenhuma chave nova é exigida no painel.
+
+A seleção é persistida no armazenamento do SkinsRestorer. Se estiver autenticado online, o perfil recebe a skin na thread principal. Offline ou se o refresh falhar, a seleção permanece para o próximo login. Salvar e aplicar são resultados distintos. Operações não são repetidas automaticamente. Sem confirmação após 180 s, o resultado é desconhecido: confira a aparência antes de repetir.

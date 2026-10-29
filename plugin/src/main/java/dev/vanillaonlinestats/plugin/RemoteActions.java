@@ -11,6 +11,10 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
 final class RemoteActions {
+  AuthMeBridge auth() {
+    return auth;
+  }
+
   private final JavaPlugin plugin;
   private final Settings settings;
   private final Snapshots snapshots;

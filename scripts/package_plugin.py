@@ -25,6 +25,7 @@ bom = {
             'description': 'External server runtime, not bundled'},
         {'type': 'application', 'name': 'AuthMeReloaded', 'version': '6.0.1-b2770', 'scope': 'required',
             'description': 'External plugin, not bundled'},
+        {'type': 'application', 'name': 'SkinsRestorer', 'version': '15.12.6', 'scope': 'required', 'description': 'External plugin and public API, not bundled', 'licenses': [{'license': {'id': 'GPL-3.0-or-later'}}]},
         {'type': 'library', 'name': 'Gson', 'group': 'com.google.code.gson', 'version': '2.14.0', 'scope': 'required',
             'purl': 'pkg:maven/com.google.code.gson/gson@2.14.0', 'licenses': [{'license': {'id': 'Apache-2.0'}}],
             'description': 'Provided by Paper, not embedded in VanillaOnlineStats.jar'},

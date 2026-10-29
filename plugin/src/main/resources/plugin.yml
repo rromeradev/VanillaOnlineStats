@@ -3,8 +3,8 @@ main: dev.vanillaonlinestats.plugin.VanillaOnlineStatsPlugin
 version: '${version}'
 api-version: '26.3'
 load: POSTWORLD
-depend: [AuthMe]
-softdepend: [LuckPerms, Vault, PlaceholderAPI, SkinsRestorer]
+depend: [AuthMe, SkinsRestorer]
+softdepend: [LuckPerms, Vault, PlaceholderAPI]
 commands:
   vos:
     description: Estado local do VanillaOnlineStats

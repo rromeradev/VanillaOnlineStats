@@ -12,7 +12,7 @@ Player entra com nick/senha AuthMe, validada pelo plugin em worker através de W
 
 Filas e amostragens do agente são limitadas; snapshots são coalescidos e lotes recebem ACK por mensagem. Spool AES-GCM é opcional, com chave independente e retenção de cinco minutos. Telemetria não promete entrega sem perdas.
 
-O canal de controle é de saída, com Ed25519, tenant/servidor/ator, TTL, nonce e auditoria antes/depois. Escritas exigem opt-in e allowlist no plugin. Alto risco exige Owner/reautenticação na API. Uma execução sem resultado confirmado fica UNKNOWN; não é reenviada automaticamente.
+O canal de controle é de saída, com Ed25519, tenant/servidor/ator, TTL, nonce e auditoria antes/depois. Escritas administrativas exigem opt-in e allowlist no plugin. A troca própria de skin é uma operação separada, assinada para o UUID do ator PLAYER e confirmada pelo botão Aplicar; não concede permissões administrativas. Alto risco exige Owner/reautenticação na API. Uma execução sem resultado confirmado fica UNKNOWN; não é reenviada automaticamente.
 
 Payloads e resultados persistidos são cifrados por AES-256-GCM com contexto tenant/servidor. Contratos versionados ficam em `packages/api-contracts`. A baseline fixada evita prometer compatibilidade com versões não verificadas.
 
@@ -24,9 +24,17 @@ No WSS do agente, `agent.telemetry` recebe ACK após persistência. Assinaturas 
 
 O mesmo proxy/porta HTTP(S) deve encaminhar Upgrade WebSocket. `APP_ORIGIN` deve corresponder ao domínio usado no navegador. Não são necessários token exposto no frontend nem porta pública adicional. A CI verifica o upgrade autenticado no container do stack e a integração com um agente Paper real.
 
+## Última sessão e skins
+
+O agente coleta páginas privadas independentemente de assinaturas do painel, com política local/AuthMe e limites de amostragem. Projeções por jogador/operação/página permitem leitura offline após reinício da API; checkpoints limitados recuperam perdas de fila. Últimos 200 eventos da sessão também são preservados. O WebSocket entrega essas projeções quando a consulta nativa está indisponível, identificando a data observada. Nenhum dado ausente é estimado.
+
+SkinsRestorer 15.12.6 passa a ser dependência obrigatória e API tipada. A API consulta o catálogo popular público do MineSkin em origem fixa com cache, alternativa autorizada após o bloqueio HTTP 403 do NameMC. Upload é reencodado no navegador, limitado na API e decodificado/validado no agente. Geração/armazenamento ocorrem em worker; aplicação online ocorre na thread Paper. Offline, a escolha persiste para o próximo login. Argumentos PNG/propriedades não são registrados no ledger nem em vos_actions; somente resultado e correlação são persistidos.
+
+Validação: retenção simulada de 90 dias, reinício/conexão nova, isolamento por jogador, fallback de assinatura, autorização de mudança própria, PNG inválido, galeria cacheada/indisponível, testes de navegador nos dois temas e Paper real com SkinsRestorer (salvar e reler seleção offline). Geração externa real de PNG também verificada manualmente; a CI usa propriedade pública assinada como fixture para não depender da fila de geração.
+
 ## Limites atuais
 
-Uma instância de API por instalação: sockets e solicitações pendentes são locais ao processo. Retenção automática: mensagens 30 dias, últimas projeções 7 dias, resultados de consultas/ações 7 dias. Auditoria, identidades e pedidos de privacidade não expiram automaticamente. Histórico retorna até 500 eventos ou 1.000 amostras/registros exportados, sem paginação histórica completa.
+Uma instância de API por instalação: sockets e solicitações pendentes são locais ao processo. Retenção automática: mensagens 30 dias, projeções operacionais 7 dias; último estado/páginas/skin e últimos 200 eventos da sessão de cada jogador sem expiração, resultados de consultas/ações 7 dias. Auditoria, identidades e pedidos de privacidade não expiram automaticamente. Histórico retorna até 500 eventos ou 1.000 amostras/registros exportados, sem paginação histórica completa.
 
 Pedidos de exportação/exclusão são registrados para atendimento manual. Não há MFA web, reset de senha por e-mail, convites por e-mail nem operação SaaS. Integrações opcionais seguem a [cobertura do plugin](PLUGIN.md). Perfis observados não garantem presença atual; sem sinal recente o servidor é marcado offline.
 

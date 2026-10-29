@@ -46,6 +46,9 @@ public final class VanillaOnlineStatsPlugin extends JavaPlugin {
     }
     saveDefaultConfig();
     try {
+      if (!net.skinsrestorer.api.VersionProvider.isCompatibleWith("15"))
+        throw new IllegalArgumentException("SkinsRestorer API 15 exigida");
+      Objects.requireNonNull(net.skinsrestorer.api.SkinsRestorerProvider.get());
       if (getConfig().getInt("schema-version", 1) == 1) {
         var backup = getDataFolder().toPath().resolve("config-v1.backup.yml");
         if (!java.nio.file.Files.exists(backup))
@@ -67,6 +70,7 @@ public final class VanillaOnlineStatsPlugin extends JavaPlugin {
         spool =
             new EncryptedSpool(getDataFolder().toPath(), storageKey, bus, settings.queueBytes());
       snapshots = new Snapshots(this, settings, auth);
+      new SavedPlayerData(this, snapshots, bus, auth, settings);
       java.util.Map<String, java.nio.file.Path> folders = new java.util.LinkedHashMap<>();
       getServer().getWorlds().stream()
           .limit(settings.maxWorlds())

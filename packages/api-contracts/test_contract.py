@@ -60,5 +60,25 @@ class WatchContractTest(unittest.TestCase):
         self.assertFalse(validator.is_valid(case))
 
 
+class SkinContractTest(unittest.TestCase):
+    def test_only_confirmed_self_skin_mutation_is_allowed(self):
+        schema = json.loads((ROOT / "control-body.schema.json").read_text())
+        validator = Draft202012Validator(schema, format_checker=FormatChecker())
+        uid = "11111111-1111-4111-8111-111111111111"
+        value = dict(schemaVersion=1, actionId=uid, actorId=uid, actorRole="PLAYER", serverId=uid,
+                     tenantId=uid, operation="player.skin.set", kind="skin",
+                     arguments=dict(png="cG5n", model="slim"), issuedAt="2026-10-29T00:00:00Z",
+                     expiresAt="2026-10-29T00:00:25Z", riskLevel="MEDIUM", confirmed=True,
+                     nonce=uid, auditCorrelationId=uid)
+        validator.validate(value)
+        for key, invalid in [("actorRole", "ADMIN"), ("confirmed", False), ("operation", "server.broadcast")]:
+            case = copy.deepcopy(value)
+            case[key] = invalid
+            self.assertFalse(validator.is_valid(case))
+        case = copy.deepcopy(value)
+        case["arguments"]["playerId"] = uid
+        self.assertFalse(validator.is_valid(case))
+
+
 if __name__ == "__main__":
     unittest.main()

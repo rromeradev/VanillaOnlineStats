@@ -96,7 +96,7 @@ export class Control {
           const p = value.payload;
           if (!p || p.schemaVersion !== 1 || !Array.isArray(p.queries) || !Array.isArray(p.collectors) || p.queries.length > 64 || p.collectors.length > 32) throw new Error('capabilities');
           const sanitized = { schemaVersion: 1, playerQueries: p.playerQueries === true, authmePasswordLogin: p.authmePasswordLogin === true,
-            streaming:p.streaming===true, controls:{writesEnabled:p.controls?.writesEnabled===true,consoleEnabled:p.controls?.consoleEnabled===true,allowedOperations:Array.isArray(p.controls?.allowedOperations)?p.controls.allowedOperations.filter((op:any)=>Object.hasOwn(ACTIONS,op)):[]}, collectors: p.collectors.filter((v: any) => typeof v === 'string' && v.length < 64),
+            skinChanges:p.skinChanges===true, streaming:p.streaming===true, controls:{writesEnabled:p.controls?.writesEnabled===true,consoleEnabled:p.controls?.consoleEnabled===true,allowedOperations:Array.isArray(p.controls?.allowedOperations)?p.controls.allowedOperations.filter((op:any)=>Object.hasOwn(ACTIONS,op)):[]}, collectors: p.collectors.filter((v: any) => typeof v === 'string' && v.length < 64),
             queries: p.queries.filter((v: any) => QUERIES.includes(v)), privacy: Object.fromEntries(['players','positions','inventories','addresses','seeds'].map(key => [key, p.privacy?.[key] === true])),
             unsupported: Array.isArray(p.unsupported) ? p.unsupported.filter((v: any) => typeof v === 'string' && v.length < 128).slice(0, 64) : [] };
           await this.db.rows('UPDATE vos_servers SET capabilities=$1 WHERE tenant_id=$2 AND id=$3', [JSON.stringify(sanitized), server.tenant_id, server.id]);
@@ -128,25 +128,25 @@ export class Control {
     const now=Date.now(),actionId=randomUUID(),body={schemaVersion:1,actionId,actorId:watch.actor.actor_id,actorRole:watch.actor.kind==='PLAYER'?'PLAYER':watch.actor.role??'ADMIN',serverId:watch.server.id,tenantId:watch.server.tenant_id,operation:watch.operation,kind:'watch',arguments:{watchId:watch.id,query:watch.args,stop},issuedAt:new Date(now).toISOString(),expiresAt:new Date(now+25000).toISOString(),riskLevel:'LOW',confirmed:false,nonce:randomUUID(),auditCorrelationId:actionId};
     const bytes=Buffer.from(JSON.stringify(body));watch.renewAt=Date.now()+30000;socket.send(JSON.stringify({body:bytes.toString('base64url'),signature:sign(null,bytes,this.privateKey).toString('base64url')}));
   }
-  async request(server: Server, session: Pick<Session, 'actor_id' | 'kind'> & { role?: string }, operation: string, args: any, kind: 'query' | 'action' | 'link', confirmed = false) {
+  async request(server: Server, session: Pick<Session, 'actor_id' | 'kind'> & { role?: string }, operation: string, args: any, kind: 'query' | 'action' | 'link' | 'skin', confirmed = false) {
     const socket = this.sockets.get(server.id);
     if (!socket || socket.readyState !== WebSocket.OPEN) fail(503, 'Servidor sem canal de controle.');
     if(kind==='query'){this.limits.check('reads:'+server.id,600);this.limits.check('reads:'+server.id+':'+session.actor_id,90);}
     else this.limits.check('control:' + server.id, 24);
     // Reserve capacity for explicitly confirmed commands during continuous reads.
     if ([...this.pending.values()].filter(value => value.server.id === server.id).length >= (kind==='query'?4:6)) fail(429);
-    const actionId = randomUUID(), correlation = randomUUID(), now = Date.now(), risk = kind === 'action' ? ACTIONS[operation].risk : 'LOW';
+    const actionId = randomUUID(), correlation = randomUUID(), now = Date.now(), risk = kind === 'skin' ? 'MEDIUM' : kind === 'action' ? ACTIONS[operation].risk : 'LOW';
     const body = { schemaVersion: 1, actionId, actorId: session.actor_id, actorRole: session.kind === 'PLAYER' ? 'PLAYER' : session.role ?? 'ADMIN',
       serverId: server.id, tenantId: server.tenant_id, operation, kind, arguments: args,
       issuedAt: new Date(now).toISOString(), expiresAt: new Date(now + 25_000).toISOString(), riskLevel: risk, confirmed, nonce: randomUUID(), auditCorrelationId: correlation };
     const bytes = Buffer.from(JSON.stringify(body)); if (bytes.length > 32768) fail(413);
     const persist = kind !== 'link';
     if (persist) {
-      await this.db.rows(`INSERT INTO vos_actions(id,tenant_id,server_id,actor_id,operation,kind,risk,state,correlation_id,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,'PENDING',$8,$9)`, [actionId, server.tenant_id, server.id, session.actor_id, operation, kind, risk, correlation, body.expiresAt]);
+      await this.db.rows(`INSERT INTO vos_actions(id,tenant_id,server_id,actor_id,operation,kind,risk,state,correlation_id,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,'PENDING',$8,$9)`, [actionId, server.tenant_id, server.id, session.actor_id, operation, kind, risk, correlation, kind==='skin'?new Date(now+180000).toISOString():body.expiresAt]);
       await this.db.audit(server, session.actor_id, operation, 'PENDING', correlation);
     }
     const result = new Promise<any>(resolve => {
-      const timer = setTimeout(() => { void this.finish(actionId, 'UNKNOWN', null).catch(() => resolve({ id: actionId, state: 'UNKNOWN', payload: null })); }, 27_000); timer.unref();
+      const timer = setTimeout(() => { void this.finish(actionId, 'UNKNOWN', null).catch(() => resolve({ id: actionId, state: 'UNKNOWN', payload: null })); }, kind==='skin'?180_000:27_000); timer.unref();
       this.pending.set(actionId, { server, socket, correlation, resolve, timer, persist });
     });
     socket.send(JSON.stringify({ body: bytes.toString('base64url'), signature: sign(null, bytes, this.privateKey).toString('base64url') }), error => { if (error) void this.finish(actionId, 'UNKNOWN', null); });

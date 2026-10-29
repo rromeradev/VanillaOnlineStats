@@ -34,11 +34,13 @@ Versões e integridade das dependências JavaScript em pnpm-lock.yaml; os pacote
 - PostgreSQL é serviço externo sob PostgreSQL License; Docker usa a imagem oficial.
 - Node.js é runtime externo; textos de licença das dependências são mantidos nos pacotes instalados.
 
-O bundle web contém Angular/RxJS/tslib; apps/web/dist/3rdpartylicenses.txt é gerado pelo build e deve acompanhar a distribuição. A lista completa de versões e integridade está em pnpm-lock.yaml. Nenhum Paper/AuthMe é redistribuído.
+O bundle web contém Angular/RxJS/tslib; apps/web/dist/3rdpartylicenses.txt é gerado pelo build e deve acompanhar a distribuição. A lista completa de versões e integridade está em pnpm-lock.yaml. Nenhum Paper/AuthMe/SkinsRestorer é redistribuído.
 
 ## Recursos visuais 0.5.0
 
 - skinview3d 3.4.2 (bs-community), MIT: https://github.com/bs-community/skinview3d. Usa Three.js, MIT, com versões transitivas registradas no lockfile. O build inclui os avisos em 3rdpartylicenses.txt.
 - BlocksItems API 2026.1.2: https://blocksitems.com/pt-BR/api. Serviço externo de ícones, renders e catálogo; atribuição no detalhe dos itens. Imagens permanecem sujeitas aos direitos e termos dos respectivos titulares; não são redistribuídas no repositório.
 - Texturas de skins são carregadas de textures.minecraft.net pelo hash observado no perfil Paper ou pela API pública do SkinsRestorer. Não se redistribui um catálogo de skins.
-- SkinsRestorer é integração opcional por reflexão de sua API pública, sem incorporar seu binário. Assinaturas conferidas no artefato oficial 15.12.6: https://github.com/SkinsRestorer/SkinsRestorer.
+- SkinsRestorer 15.12.6 é dependência externa obrigatória, GPL-3.0-or-later, usando a API pública tipada como compileOnly, sem incorporar seu binário. Assinaturas conferidas no artefato oficial 15.12.6: https://github.com/SkinsRestorer/SkinsRestorer.
+
+- MineSkin: catálogo público e serviço externo de propriedades assinadas, https://mineskin.org e https://github.com/MineSkin/api.mineskin.org. Galeria identifica a origem; imagens permanecem nos servidores de texturas da Mojang e sujeitas aos direitos dos titulares. A fixture de teste contém somente uma propriedade de skin pública assinada, com origem registrada.

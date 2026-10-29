@@ -37,25 +37,10 @@ final class SkinSnapshot {
   // Paper profile, including temporary skins applied by SkinsRestorer or a proxy.
   static JsonObject stored(org.bukkit.plugin.Plugin plugin, UUID uuid) {
     try {
-      var loader = plugin.getClass().getClassLoader();
-      var apiType = Class.forName("net.skinsrestorer.api.SkinsRestorer", true, loader);
-      Object api =
-          Class.forName("net.skinsrestorer.api.SkinsRestorerProvider", true, loader)
-              .getMethod("get")
-              .invoke(null);
-      Object storage = apiType.getMethod("getPlayerStorage").invoke(api);
-      var result =
-          (Optional<?>)
-              Class.forName("net.skinsrestorer.api.storage.PlayerStorage", true, loader)
-                  .getMethod("getSkinOfPlayer", UUID.class)
-                  .invoke(storage, uuid);
+      var api = net.skinsrestorer.api.SkinsRestorerProvider.get();
+      var result = api.getPlayerStorage().getSkinOfPlayer(uuid);
       if (result.isEmpty()) return Telemetry.object("source", "unavailable");
-      Object property = result.get();
-      String encoded =
-          (String)
-              Class.forName("net.skinsrestorer.api.property.SkinProperty", true, loader)
-                  .getMethod("getValue")
-                  .invoke(property);
+      String encoded = result.get().getValue();
       if (encoded.length() > 16384) return Telemetry.object("source", "unavailable");
       var skin =
           JsonParser.parseString(

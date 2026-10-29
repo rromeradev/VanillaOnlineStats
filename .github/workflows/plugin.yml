@@ -48,26 +48,28 @@ jobs:
           curl --fail --location --retry 3 -o .tools/authme.jar https://github.com/AuthMe/AuthMeReloaded/releases/download/6.0.1/AuthMe-6.0.1-Paper.jar
           echo '416b7d105b1d0192df4afa4b29d2800d9dbeda092a82fbc5b511248a54adde15  .tools/paper.jar' | sha256sum -c -
           echo '7704335e9e73a634d9d926344f77897f4c74f78f82453a59f5aa0f8d2722450a  .tools/authme.jar' | sha256sum -c -
+          curl --fail --location --retry 3 -o .tools/skinsrestorer.jar https://github.com/SkinsRestorer/SkinsRestorer/releases/download/15.12.6/SkinsRestorer.jar
+          echo 'a85b4a370f988741c9a38f4d0498262edacbf3220314790ac1c127461996359c  .tools/skinsrestorer.jar' | sha256sum -c -
       - name: Smoke test with and without AuthMe
         run: >-
           python scripts/smoke_server.py --java "$JAVA_HOME/bin/java"
-          --paper .tools/paper.jar --authme .tools/authme.jar
-          --plugin plugin/build/libs/VanillaOnlineStats-0.5.0.jar
+          --paper .tools/paper.jar --authme .tools/authme.jar --skinsrestorer .tools/skinsrestorer.jar
+          --plugin plugin/build/libs/VanillaOnlineStats-0.6.0.jar
           --output .tools/smoke --heartbeat --accept-eula
       - name: Release protocol integration (Paper, batches and signed controls)
         run: >-
           python scripts/smoke_release.py --java "$JAVA_HOME/bin/java"
-          --paper .tools/paper.jar --authme .tools/authme.jar
-          --plugin plugin/build/libs/VanillaOnlineStats-0.5.0.jar
+          --paper .tools/paper.jar --authme .tools/authme.jar --skinsrestorer .tools/skinsrestorer.jar
+          --plugin plugin/build/libs/VanillaOnlineStats-0.6.0.jar
           --output .tools/release-smoke --cache .tools/smoke/with-authme --accept-eula
       - name: Real platform integration (Paper, API, PostgreSQL)
         run: >-
           node scripts/smoke_platform.mjs --java "$JAVA_HOME/bin/java"
-          --paper .tools/paper.jar --authme .tools/authme.jar
-          --plugin plugin/build/libs/VanillaOnlineStats-0.5.0.jar
+          --paper .tools/paper.jar --authme .tools/authme.jar --skinsrestorer .tools/skinsrestorer.jar
+          --plugin plugin/build/libs/VanillaOnlineStats-0.6.0.jar
           --output .tools/platform-smoke --cache .tools/smoke/with-authme --accept-eula
       - name: Package plugin release
-        run: python scripts/package_plugin.py --version 0.5.0
+        run: python scripts/package_plugin.py --version 0.6.0
       - name: Package platform release
         run: |
           pnpm licenses list --prod --json > .tools/licenses.json

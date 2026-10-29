@@ -45,10 +45,12 @@ export class PanelStream {
       this.db.changes.on(current.server.id,listener);remove=()=>this.db.changes.off(current.server.id,listener);
       enqueue(revision,async active=>{
         const data=await this.snapshot(active);if(generation!==revision||view!==active)return;await this.authorize(req,active);if(generation!==revision)return;send({type:'snapshot',id:active.id,data});
+        if(active.actor.kind==='PLAYER'&&active.query){const saved=await this.db.savedPlayer(active.server,active.actor.actor_id,active.query.operation,active.query.args);if(saved&&generation===revision)send({type:'query',id:active.id,result:saved});}
         if(active.query){await this.db.audit(active.server,active.actor.actor_id,'watch.'+active.query.operation,'STARTED');
           if(generation!==revision||view!==active)return;
-          try{unwatch=this.control.watch(active.server,{...active.actor,role:active.server.role},active.query.operation,active.query.args,result=>enqueue(revision,latest=>{
+          try{unwatch=this.control.watch(active.server,{...active.actor,role:active.server.role},active.query.operation,active.query.args,result=>enqueue(revision,async latest=>{
             const safe=structuredClone(result);if(latest.actor.kind==='PLAYER'&&safe.payload){if(safe.payload.uuid&&safe.payload.uuid!==latest.actor.actor_id)fail(403);delete safe.payload.address;delete safe.payload.permissions;}
+            if(latest.actor.kind==='PLAYER'&&latest.query&&safe.state!=='SUCCEEDED'){const saved=await this.db.savedPlayer(latest.server,latest.actor.actor_id,latest.query.operation,latest.query.args);if(saved){send({type:'query',id:latest.id,result:saved});return;}}
             send({type:'query',id:latest.id,result:safe});
           }));}catch(error:any){if(error?.getStatus?.()===429)send({type:'query',id:active.id,result:{state:'FAILED',payload:{reasonCode:'SUBSCRIPTION_LIMIT'}}});else throw error;}}
       });

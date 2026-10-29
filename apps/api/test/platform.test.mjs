@@ -52,6 +52,20 @@ suite('CSRF and privileges cannot be supplied by the browser', async () => {
   assert.equal((await post(`servers/${serverId}/actions`, { operation: 'server.console', arguments: { command: 'say hello' }, confirmed: true })).status, 403);
   const result = await post(`servers/${serverId}/queries`, { operation: 'server.snapshot', actorRole: 'OWNER', arguments: {} }); assert.equal(result.status, 400);
 });
+suite('last player pages and session events survive retention, restart, and cross-player reads',async()=>{
+  const server=await platform.db.server(serverId),player=randomUUID(),other=randomUUID();
+  const page=sample('player.saved.snapshot',{uuid:player,operation:'player.advancements',arguments:{offset:64},data:{items:[{key:'minecraft:story/mine_stone',complete:true}],nextOffset:-1}});
+  await platform.db.ingest(server,[page,sample('auth.session.started',{uuid:player}),sample('player.PlayerLevelChangeEvent',{uuid:player,NewLevel:8})]);
+  await platform.db.rows("UPDATE vos_latest SET occurred_at=now()-interval '90 days' WHERE server_id=$1 AND entity_id LIKE $2",[serverId,player+'%']);
+  await platform.db.cleanup();
+  assert.equal((await platform.db.savedPlayer(server,player,'player.advancements',{offset:64})).payload.items[0].complete,true);
+  assert.equal(await platform.db.savedPlayer(server,player,'player.advancements',{offset:0}),null);
+  assert.equal(await platform.db.savedPlayer(server,other,'player.advancements',{offset:64}),null);
+  assert.equal((await platform.db.latest(server,'player-events',player))[0].payload.items.length,2);
+  const restarted=new (await import('../dist/database.js')).Database(config.databaseUrl,config.dataKey);
+  try{assert.ok(await restarted.savedPlayer(server,player,'player.advancements',{offset:64}));}finally{await restarted.close();}
+  await platform.db.ingest(server,[sample('auth.session.started',{uuid:player})]);assert.equal((await platform.db.latest(server,'player-events',player))[0].payload.items.length,1);
+});
 suite('batches validate schema, block secret fields, persist projections and alerts', async () => {
   const perf = sample('server.performance.snapshot', { tps: [15,18,19], msptAverage: 65, heapUsed: 950, heapMax: 1000 });
   const player = sample('players.snapshot', { items: [{ uuid: randomUUID(), name: 'Player One', level: 6 }], online: 1, partial: false });
@@ -76,12 +90,13 @@ suite('real WebSocket protocol signs exact scoped requests and matches results',
     if (body.operation === 'player.authme.login' && body.arguments.password !== 'Dummy-password-no-persistence') {
       ws.send(JSON.stringify({type:'control.result',actionId:body.actionId,auditCorrelationId:body.auditCorrelationId,state:'FAILED',payload:null})); return;
     }
-    const payload = ['player.link.redeem','player.authme.login'].includes(body.operation) ? { playerId: sessions.playerId, name: 'Only Me' } : body.operation === 'player.snapshot' ? { uuid: body.arguments.playerId, name: 'Only Me', permissions: ['not-for-player'], address: '127.0.0.1' } : { ok: true };
+    if(body.kind==='skin'){assert.equal(body.actorRole,'PLAYER');assert.equal(body.actorId,sessions.playerId);assert.equal(body.arguments.playerId,undefined);assert.equal(body.confirmed,true);}
+    const payload = body.kind==='skin'?{saved:true,application:'next-login',skin:{textureHash:'a'.repeat(64),model:'slim',source:'skinsrestorer'}}:['player.link.redeem','player.authme.login'].includes(body.operation) ? { playerId: sessions.playerId, name: 'Only Me' } : body.operation === 'player.snapshot' ? { uuid: body.arguments.playerId, name: 'Only Me', permissions: ['not-for-player'], address: '127.0.0.1' } : { ok: true };
     if (body.kind === 'action') assert.equal(body.actorRole, 'OWNER');
     if (body.operation === 'player.snapshot') { assert.equal(body.actorRole, 'PLAYER'); assert.equal(body.arguments.playerId, sessions.playerId); }
     const reply=()=>ws.send(JSON.stringify({ type: 'control.result', actionId: body.actionId, auditCorrelationId: body.auditCorrelationId, state: 'SUCCEEDED', payload }));if(holdReads&&body.kind==='query')heldReplies.push(reply);else reply();
   });
-  ws.send(JSON.stringify({ type: 'agent.capabilities', payload: { schemaVersion: 1, playerQueries: true, authmePasswordLogin: true, collectors: ['players','performance'], queries: ['server.snapshot','player.snapshot'], privacy: { players: true }, unsupported: [] } }));
+  ws.send(JSON.stringify({ type: 'agent.capabilities', payload: { schemaVersion: 1, skinChanges: true, playerQueries: true, authmePasswordLogin: true, collectors: ['players','performance'], queries: ['server.snapshot','player.snapshot'], privacy: { players: true }, unsupported: [] } }));
   for (let i=0; i<30; i++) { const server = await platform.db.server(serverId); if (server.capabilities.playerQueries) break; await new Promise(resolve => setTimeout(resolve, 20)); }
   const response = await post(`servers/${serverId}/queries`, { operation: 'server.snapshot', arguments: {} }); assert.equal(response.status, 200); assert.equal((await response.json()).state, 'SUCCEEDED');
   await post('auth/reauth', { password });
@@ -96,7 +111,7 @@ async function panelConnection(actor=owner,origin=config.origin){
 }
 suite('panel WebSocket authenticates origin and pushes native changes and telemetry without reads',async()=>{
   await assert.rejects(panelConnection(null));await assert.rejects(panelConnection(owner,'https://wrong-origin.test'));
-  ws.send(JSON.stringify({type:'agent.capabilities',payload:{schemaVersion:1,streaming:true,playerQueries:true,authmePasswordLogin:true,collectors:['players','performance'],queries:['server.snapshot','player.inventory'],privacy:{players:true,inventories:true}}}));
+  ws.send(JSON.stringify({type:'agent.capabilities',payload:{schemaVersion:1,skinChanges:true,streaming:true,playerQueries:true,authmePasswordLogin:true,collectors:['players','performance'],queries:['server.snapshot','player.inventory'],privacy:{players:true,inventories:true}}}));
   const until=Date.now()+3000;while(!(await platform.db.server(serverId)).capabilities.streaming&&Date.now()<until)await new Promise(r=>setTimeout(r,10));
   const panel=await panelConnection();try{
     const reads=observedCalls;
@@ -151,6 +166,16 @@ suite('Offline Player password login remains scoped; no administrative access or
   const disconnect=sample('auth.session.ended',{uuid:sessions.playerId,reason:'disconnect',durationSeconds:40});
   await request('agents/telemetry/batches',{method:'POST',headers:{Authorization:'Bearer '+token},body:JSON.stringify({schemaVersion:1,messages:[disconnect]})},null);
   assert.equal((await request(`me/servers/${serverId}`,{},player)).status,200);
+  const savedPage=sample('player.saved.snapshot',{uuid:sessions.playerId,operation:'player.inventory',arguments:{},data:{uuid:sessions.playerId,inventory:[{slot:0,item:{type:'minecraft:diamond',amount:7}}],enderChest:[]}});
+  await platform.db.ingest(await platform.db.server(serverId),[savedPage]);await panel.next(v=>v.type==='query'&&v.result.saved);
+  const watch=[...activeWatches.values()].find(w=>w.arguments.query.playerId===sessions.playerId);
+  ws.send(JSON.stringify({type:'watch.update',watchId:watch.arguments.watchId,sequence:++watch.sequence,state:'FAILED',payload:{reasonCode:'PLAYER_NOT_AUTHENTICATED'}}));
+  const fallback=await panel.next(v=>v.type==='query'&&v.result.saved);assert.equal(fallback.result.payload.inventory[0].item.amount,7);
+  assert.equal((await post(`me/servers/${otherServer}/skin`,{png:'invalid',model:'slim'},player)).status,403);
+  assert.equal((await post(`me/servers/${serverId}/skin`,{playerId:randomUUID(),png:'invalid',model:'slim'},player)).status,400);
+  const header=Buffer.alloc(33);Buffer.from('89504e470d0a1a0a','hex').copy(header);header.write('IHDR',12);header.writeUInt32BE(64,16);header.writeUInt32BE(64,20);
+  const changedSkin=await post(`me/servers/${serverId}/skin`,{png:header.toString('base64'),model:'slim'},player);assert.equal(changedSkin.status,200);assert.equal((await changedSkin.json()).payload.saved,true);
+  assert.equal((await platform.db.latest(await platform.db.server(serverId),'skin',sessions.playerId))[0].payload.textureHash,'a'.repeat(64));
   const panelClosed=new Promise(resolve=>panel.socket.once('close',code=>resolve(code)));
   const logout = sample('auth.session.ended', { uuid: sessions.playerId, durationSeconds: 40 });
   await request('agents/telemetry/batches', { method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: JSON.stringify({ schemaVersion: 1, messages: [logout] }) }, null);

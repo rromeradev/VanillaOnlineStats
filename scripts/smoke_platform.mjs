@@ -2,7 +2,7 @@
 // Disposable real Paper -> NestJS -> PostgreSQL -> signed control round trip.
 import { createRequire } from 'node:module';
 import { randomBytes, randomUUID, generateKeyPairSync } from 'node:crypto';
-import { mkdir, writeFile, copyFile, cp } from 'node:fs/promises';
+import { mkdir, writeFile, copyFile, cp, readFile } from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
 import { resolve } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -12,7 +12,7 @@ const require = createRequire(new URL('../apps/api/package.json', import.meta.ur
 const WebSocket=require('ws');
 const { Pool } = require('pg'), { createPlatform } = require('./dist/platform.js'), { sha } = require('./dist/security.js');
 const argv = process.argv.slice(2), arg = name => argv[argv.indexOf('--' + name) + 1];
-for (const name of ['java','paper','authme','plugin','output']) if (!argv.includes('--' + name)) throw new Error('Missing --' + name);
+for (const name of ['java','paper','authme','skinsrestorer','plugin','output']) if (!argv.includes('--' + name)) throw new Error('Missing --' + name);
 if (!argv.includes('--accept-eula') || !process.env.TEST_DATABASE_URL) throw new Error('Requires --accept-eula and TEST_DATABASE_URL');
 const root = resolve(arg('output')), schema = 'vos_smoke_' + randomBytes(8).toString('hex');
 await mkdir(root); await mkdir(resolve(root, 'plugins/VanillaOnlineStats'), { recursive: true });
@@ -28,6 +28,7 @@ try {
   await platform.app.listen(0, '127.0.0.1'); const url = await platform.app.getUrl();
   await copyFile(resolve(arg('paper')), resolve(root,'paper.jar'));
   await copyFile(resolve(arg('authme')), resolve(root,'plugins/AuthMe.jar'));
+  await copyFile(resolve(arg('skinsrestorer')), resolve(root,'plugins/SkinsRestorer.jar'));
   await copyFile(resolve(arg('plugin')), resolve(root,'plugins/VanillaOnlineStats.jar'));
   if (argv.includes('--cache')) for (const dir of ['libraries','cache']) await cp(resolve(arg('cache'),dir), resolve(root,dir), {recursive:true});
   const playerId = randomUUID(), playerPassword = randomBytes(20).toString('base64url'), salt = '0123456789abcdef';
@@ -51,6 +52,9 @@ telemetry:
   endpoint: ${url}/api/v1/agents/telemetry/batches
 collectors:
   period-seconds: 5
+privacy:
+  player-state: true
+  inventories: true
 limits:
   collector-budget-micros: 20000
 control:
@@ -101,6 +105,12 @@ control:
   const session = await platform.db.one("SELECT actor_id FROM vos_sessions WHERE kind='PLAYER'"); assert.equal(session.actor_id,playerId);
   assert.equal((await platform.db.one("SELECT count(*)::int AS n FROM vos_actions WHERE operation='player.authme.login'")).n,0);
   findings.push('Offline AuthMe password login accepted, wrong password/2FA refused, Paper cached UUID matched; login credentials not persisted.');
+  const fixture=JSON.parse(await readFile(new URL('./fixtures/skin-property.json',import.meta.url),'utf8'));
+  const skinResult=await platform.control.request(await platform.db.server(serverId),{kind:'PLAYER',actor_id:playerId},'player.skin.set',fixture.property,'skin',true);
+  assert.equal(skinResult.state,'SUCCEEDED');assert.equal(skinResult.payload.saved,true);assert.equal(skinResult.payload.application,'next-login');assert.equal(skinResult.payload.skin.textureHash,fixture.textureHash);
+  const skinLogin=await call('auth/player/login',{serverId,nickname:'OfflineTest',password:playerPassword});assert.equal(skinLogin.status,200);await skinLogin.json();
+  const storedSkin=await platform.db.latest(await platform.db.server(serverId),'skin',playerId);assert.equal(storedSkin[0].payload.textureHash,fixture.textureHash);
+  findings.push('Real SkinsRestorer API saved a signed skin for an offline player; subsequent AuthMe login read the persisted selection.');
   await writeFile(resolve(root,'results.txt'),findings.join('\n')+'\n'); console.log(findings.join('\n'));
 } finally {
   if (paper && paper.exitCode === null) { paper.stdin.write('stop\n'); await Promise.race([new Promise(r=>paper.once('exit',r)),new Promise(r=>setTimeout(r,20000))]); if(paper.exitCode===null) paper.kill(); }

@@ -198,6 +198,8 @@ final class CollectorRegistry {
         true,
         "authmePasswordLogin",
         true,
+        "skinChanges",
+        true,
         "controls",
         object(
             "writesEnabled",

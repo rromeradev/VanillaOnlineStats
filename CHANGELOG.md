@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0 — 2026-10-29
+
+- Plugin 0.6.0: SkinsRestorer 15.12.6 obrigatório, API pública tipada e troca própria de skin persistente, inclusive offline para o próximo login.
+- Player: estado, inventário, estatísticas, conquistas e últimos eventos da sessão disponíveis offline, sem expiração automática dos últimos dados salvos. Coleta independente da abertura do painel e fallback pelo WebSocket existente.
+- Editor de aparência na visão geral, galeria popular MineSkin, preview 3D e upload PNG clássico/slim com reencodificação e validação no agente.
+- Catálogo externo com cache; geração de uploads no worker, persistência e aplicação na thread principal separadas. Alterações próprias assinadas, auditadas e limitadas sem habilitar controles administrativos.
+
 ## 0.6.0 — 2026-10-29
 
 - WebSocket persistente entre painel/API, com snapshot inicial e entrega de mudanças; removidos polling HTTP, SSE de invalidação e endpoints antigos de polling.

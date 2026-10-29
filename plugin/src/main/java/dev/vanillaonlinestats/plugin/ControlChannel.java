@@ -44,6 +44,7 @@ final class ControlChannel implements AutoCloseable {
           });
   private final AtomicInteger inFlight = new AtomicInteger(), sending = new AtomicInteger();
   private final AtomicBoolean connecting = new AtomicBoolean();
+  private final AtomicBoolean changingSkin = new AtomicBoolean();
   private volatile WebSocket socket;
   private volatile boolean closed;
   private volatile String state = "aguardando";
@@ -254,6 +255,43 @@ final class ControlChannel implements AutoCloseable {
       } finally {
         inFlight.decrementAndGet();
       }
+      return;
+    }
+    if (request.kind().equals("skin")) {
+      if (!changingSkin.compareAndSet(false, true)) {
+        inFlight.decrementAndGet();
+        send(origin, result(request, "REJECTED", object("reasonCode", "SKIN_BUSY")));
+        return;
+      }
+      Thread worker =
+          new Thread(
+              () -> {
+                String outcome = "FAILED";
+                JsonObject payload;
+                try {
+                  payload = SkinChanges.apply(plugin, actions.auth(), request);
+                  outcome = "SUCCEEDED";
+                } catch (Exception failure) {
+                  payload =
+                      object(
+                          "reasonCode",
+                          failure instanceof ControlFailure rejected
+                              ? rejected.code
+                              : "SKIN_STORAGE_FAILED");
+                }
+                try {
+                  audit.result(request, outcome);
+                  send(origin, result(request, outcome, payload));
+                } catch (Exception failure) {
+                  healthy = false;
+                } finally {
+                  changingSkin.set(false);
+                  inFlight.decrementAndGet();
+                }
+              },
+              "vos-skin-change");
+      worker.setDaemon(true);
+      worker.start();
       return;
     }
     try {
