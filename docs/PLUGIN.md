@@ -1,6 +1,6 @@
 # Plugin Paper/AuthMe
 
-Versão atual: **0.3.2**, integrada à plataforma 0.4.1. Baseline: Paper 26.3 build 227, Java 25 e AuthMe 6.0.1-b2770. As funcionalidades abaixo são a cobertura atual, não uma promessa de todas as funções da especificação.
+Versão atual: **0.4.0**, integrada à plataforma 0.5.0. Baseline: Paper 26.3 build 227, Java 25 e AuthMe 6.0.1-b2770. As funcionalidades abaixo são a cobertura atual, não uma promessa de todas as funções da especificação.
 
 ## Instalação
 
@@ -74,6 +74,21 @@ Histórico/perfil previamente coletados podem ser vistos offline. Para coletar e
 Use `vos status`, `vos collectors`, `vos capabilities` e `vos queue`. No console, `vos query server.performance` e `vos query worlds.list` permitem validar coleta para validar a coleta local. Consultas com argumentos usam JSON: `vos query world.snapshot {"worldId":"UUID"}`.
 
 ## Configuração de telemetria e controle
+
+Na plataforma 0.5.0, o painel recebe notificações SSE autenticadas e atualiza os dados automaticamente. O plugin 0.4.0 envia o estado dos jogadores autenticados a cada segundo, com rotação e orçamento de coleta. Eventos continuam sujeitos à fila e à disponibilidade da rede; não há garantia de latência fixa. Consultas de inventário/estatísticas/conquistas continuam sob demanda e exigem jogador online e autenticado.
+
+Para habilitar um aviso administrativo, ajuste localmente a seção existente, preservando endpoint, tenant-id e public-key:
+
+```yaml
+control:
+  writes-enabled: true
+  allowed-operations:
+    - server.broadcast
+```
+
+Reinicie o Paper. Acrescente somente as operações que deseja permitir. O painel exibe a política anunciada e o motivo específico de recusa; versões antigas que retornavam IllegalArgumentException devem ser atualizadas. Não há ativação remota de permissões.
+
+Cabeças e modelos 3D usam a skin efetivamente aplicada ao perfil Paper, inclusive alterações feitas pelo SkinsRestorer. Com SkinsRestorer presente, o login web também consulta sua skin armazenada pela API pública. `privacy.player-state: true` habilita essa coleta. Sem textura observada, o painel mostra uma identificação alternativa; não inventa a skin pelo nickname. Não é necessário configurar chave da BlocksItems.
 
 `telemetry.endpoint`: `https://DOMINIO/api/v1/agents/telemetry/batches`.
 

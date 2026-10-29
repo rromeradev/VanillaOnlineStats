@@ -217,7 +217,14 @@ final class ControlChannel implements AutoCloseable {
                   } else if (!request.expiresAt().isAfter(Instant.now())) outcome = "EXPIRED";
                 } catch (Exception failed) {
                   outcome = "FAILED";
-                  payload = object("reasonCode", failed.getClass().getSimpleName());
+                  payload =
+                      object(
+                          "reasonCode",
+                          failed instanceof ControlFailure failure
+                              ? failure.code
+                              : failed instanceof IllegalArgumentException
+                                  ? "INVALID_ARGUMENTS"
+                                  : "OPERATION_FAILED");
                 }
                 String completed = outcome;
                 JsonObject data = payload;

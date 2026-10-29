@@ -61,6 +61,21 @@ suite('batches validate schema, block secret fields, persist projections and ale
   const overview = await (await request(`servers/${serverId}/overview`)).json(); assert.equal(overview.alerts.filter(v => v.active).length, 3);
   assert.equal((await (await request(`servers/${serverId}/players`)).json()).length, 1);
 });
+suite('stream is scoped and emits an invalidation after committed ingestion',async()=>{
+  assert.equal((await request(`servers/${otherServer}/stream`)).status,404);
+  assert.equal((await request(`servers/${serverId}/stream`,{},null)).status,401);
+  const abort=new AbortController();const response=await request(`servers/${serverId}/stream`,{signal:abort.signal});assert.equal(response.status,200);
+  assert.match(response.headers.get('content-type'),/text\/event-stream/);const reader=response.body.getReader();
+  try {
+    assert.match(new TextDecoder().decode((await reader.read()).value),/event: update/);
+    const message=sample('players.live.snapshot',{items:[{uuid:randomUUID(),name:'Stream Player',level:12}],partial:false});
+    const ack=await request('agents/telemetry/batches',{method:'POST',headers:{Authorization:'Bearer '+token},body:JSON.stringify({schemaVersion:1,messages:[message]})},null);assert.equal(ack.status,202);
+    const next=await Promise.race([reader.read(),new Promise((_,reject)=>setTimeout(()=>reject(new Error('No live update')),2000).unref())]);
+    const text=new TextDecoder().decode(next.value);assert.match(text,/event: update/);assert.ok(!text.includes('Stream Player'));
+    const players=await(await request(`servers/${serverId}/players`)).json();assert.ok(players.some(p=>p.payload.level===12));
+    const events=await(await request(`servers/${serverId}/events?hours=1`)).json();assert.ok(events.every(e=>!e.type.endsWith('.snapshot')));
+  }finally{abort.abort();await reader.cancel().catch(()=>{});}
+});
 suite('real WebSocket protocol signs exact scoped requests and matches results', async () => {
   ws = new WebSocket(url.replace(/^http/, 'ws') + '/api/v1/agents/control', { headers: { Authorization: 'Bearer ' + token } });
   await new Promise((resolve, reject) => { ws.once('open', resolve); ws.once('error', reject); });
@@ -89,12 +104,16 @@ suite('Offline Player password login remains scoped; no administrative access or
   const response = await post('auth/player/login', { serverId, nickname: 'OnlyMe', password: 'Dummy-password-no-persistence' }, null); assert.equal(response.status, 200);
   const identity = await response.json(); const player = { cookie: response.headers.get('set-cookie').split(';')[0], csrf: identity.csrf };
   assert.equal(identity.kind, 'PLAYER');
+  assert.equal((await request(`servers/${otherServer}/stream`,{},player)).status,403);
   assert.equal((await platform.db.one("SELECT count(*)::int AS n FROM vos_actions WHERE operation='player.authme.login'")).n, 0);
   assert.equal((await request(`servers/${serverId}/overview`, {}, player)).status, 403);
   assert.equal((await post(`servers/${serverId}/actions`, { operation: 'world.time', arguments: {}, confirmed: true }, player)).status, 403);
   assert.equal((await request(`me/servers/${otherServer}`, {}, player)).status, 403);
   assert.equal((await post(`me/servers/${serverId}/queries`, { operation: 'player.snapshot', arguments: { playerId: randomUUID() } }, player)).status, 400);
   const own = await post(`me/servers/${serverId}/queries`, { operation: 'player.snapshot', arguments: {} }, player); assert.equal(own.status, 200); const data = await own.json(); assert.equal(data.payload.uuid, sessions.playerId); assert.equal(data.payload.address, undefined); assert.equal(data.payload.permissions, undefined);
+  const disconnect=sample('auth.session.ended',{uuid:sessions.playerId,reason:'disconnect',durationSeconds:40});
+  await request('agents/telemetry/batches',{method:'POST',headers:{Authorization:'Bearer '+token},body:JSON.stringify({schemaVersion:1,messages:[disconnect]})},null);
+  assert.equal((await request(`me/servers/${serverId}`,{},player)).status,200);
   const logout = sample('auth.session.ended', { uuid: sessions.playerId, durationSeconds: 40 });
   await request('agents/telemetry/batches', { method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: JSON.stringify({ schemaVersion: 1, messages: [logout] }) }, null);
   assert.equal((await request(`me/servers/${serverId}`, {}, player)).status, 401);

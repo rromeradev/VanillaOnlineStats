@@ -12,6 +12,7 @@ import addFormats from 'ajv-formats';
 import { Database, Server, Session } from './database';
 import { PlatformConfig } from './platform-config';
 import { seedDemo } from './demo';
+import { Visuals } from './visuals';
 import { ACTIONS, QUERIES, Control, argumentsFor } from './control';
 import { UUID, Limits, canonical, csrf, fail, fields, id, opaque, passwordHash, passwordMatches, same, sha, text } from './security';
 
@@ -35,14 +36,16 @@ export async function createPlatform(config: PlatformConfig) {
     await db.rows(`INSERT INTO vos_servers(id,tenant_id,name,agent_hash) VALUES($1,$2,'Servidor Paper',$3) ON CONFLICT(id) DO NOTHING`, [config.initialServerId, config.tenantId, config.initialAgentHash]);
   }
   if (config.demo) await seedDemo(db, config.tenantId);
-  const limits = new Limits(), ajv = new Ajv2020({ strict: true }); addFormats(ajv);
+  const visuals=new Visuals(); const limits = new Limits(), ajv = new Ajv2020({ strict: true }); addFormats(ajv);
   const schema = (name: string) => JSON.parse(readFileSync(resolve(__dirname, '../../../packages/api-contracts/' + name + '.schema.json'), 'utf8'));
   const heartbeatValidator = ajv.compile(schema('heartbeat')), envelopeValidator = ajv.compile(schema('telemetry-envelope'));
   const cookieSecure = config.origin.startsWith('https:'); let control: Control;
   const cookie = (req: Request) => /(?:^|;\s*)vos_session=([A-Za-z0-9_-]{43})\b/.exec(req.headers.cookie ?? '')?.[1];
+  const rateSessions=new Map<string,number>();
   async function session(req: Request): Promise<Session> {
     const token = cookie(req); if (!token) fail(401);
-    const row = await db.one('SELECT * FROM vos_sessions WHERE token_hash=$1 AND expires_at>now()', [sha(token)]); if (!row) fail(401); return row;
+    const row = await db.one('SELECT * FROM vos_sessions WHERE token_hash=$1 AND expires_at>now()', [sha(token)]); if (!row) fail(401);
+    if(rateSessions.size>=8192)rateSessions.delete(rateSessions.keys().next().value!);rateSessions.set(row.token_hash,new Date(row.expires_at).getTime());return row;
   }
   async function mutation(req: Request): Promise<Session> {
     const value = await session(req); if (req.headers.origin !== config.origin || !same(req.headers['x-csrf-token']?.toString() ?? '', csrf(cookie(req)!, config.sessionSecret))) fail(403);
@@ -71,16 +74,32 @@ export async function createPlatform(config: PlatformConfig) {
     if (Buffer.byteLength(JSON.stringify(entry)) > 65536 || secrets(entry.payload)) fail(400);
     const sent = Date.parse(entry.sentAt), at = Date.parse(entry.occurredAt), now = Date.now();
     if (!Number.isFinite(sent) || !Number.isFinite(at) || at > sent + 5000 || Math.abs(now - sent) > 300_000 || Math.abs(now - at) > 300_000) fail(400);
-    if (['players.snapshot','worlds.snapshot'].includes(entry.type) && (!Array.isArray(entry.payload.items) || entry.payload.items.length > 256)) fail(400);
+    if (['players.snapshot','players.live.snapshot','worlds.snapshot'].includes(entry.type) && (!Array.isArray(entry.payload.items) || entry.payload.items.length > 256)) fail(400);
   }
   const bearer = (authorization: string | undefined) => /^Bearer ([A-Za-z0-9_-]{43,128})$/.exec(authorization ?? '')?.[1];
+  const streams = new Map<string, number>(); const stopStreams = new Set<() => void>();
   async function scopedPlayer(req: Request, serverId: string) { const actor = await session(req); if (actor.kind !== 'PLAYER' || actor.server_id !== serverId) fail(403); return { actor, server: await db.server(serverId) }; }
   const sanitizePlayer = (value: any) => { if (!value || typeof value !== 'object') return value; const result = structuredClone(value); delete result.address; delete result.permissions; return result; };
 
   @Controller('api/v1')
   class PlatformController {
+    @Get('visuals/icon/:registryId') async icon(@Param('registryId') registryId:string,@Query('angle') angle:string,@Res() res:Response){const asset=await visuals.image(registryId,angle);res.type(asset.type).setHeader('Cache-Control','public, max-age=86400');res.send(asset.bytes);}
+    @Get('visuals/skin/:hash') async skin(@Param('hash') hash:string,@Res() res:Response){const asset=await visuals.skin(hash);res.type(asset.type).setHeader('Cache-Control','public, max-age=86400');res.send(asset.bytes);}
+    @Get('visuals/item/:registryId') async item(@Req() req:Request,@Param('registryId') registryId:string){await session(req);return visuals.item(registryId);}
+    @Get('servers/:serverId/stream') async stream(@Req() req: Request, @Res() res: Response, @Param('serverId') serverId: string) {
+      const sid=id(serverId), actor=await session(req);
+      const authorize=async()=>{ const current=await session(req); if(current.kind==='PLAYER'){if(current.server_id!==sid)fail(403);}else await db.admin(current,sid); };
+      await authorize(); const key=actor.token_hash;
+      if((streams.get(key)??0)>=4)fail(429); streams.set(key,(streams.get(key)??0)+1);
+      res.setHeader('Content-Type','text/event-stream'); res.setHeader('Cache-Control','no-cache, no-transform'); res.setHeader('X-Accel-Buffering','no'); res.flushHeaders();
+      let stopped=false, checking=false;
+      const send=()=>{if(!stopped){if(res.destroyed||res.writableEnded||res.writableLength>65536){stop();return;}try{res.write('event: update\ndata: {}\n\n');}catch{stop();}}};
+      const timer=setInterval(()=>{if(checking||stopped)return;checking=true;void authorize().then(()=>{if(!stopped)res.write(': keepalive\n\n');}).catch(()=>{if(!stopped)res.write('event: expired\ndata: {}\n\n');stop();}).finally(()=>checking=false);},15000);timer.unref();
+      const stop=()=>{if(stopped)return;stopped=true;clearInterval(timer);db.changes.off(sid,send);streams.set(key,Math.max(0,(streams.get(key)??1)-1));if(!streams.get(key))streams.delete(key);stopStreams.delete(stop);res.end();};
+      db.changes.on(sid,send);stopStreams.add(stop);res.on('close',stop);res.on('error',stop);send();
+    }
     @Get('health') health() { return { status: 'ok' }; }
-    @Get('public/info') info() { return { name: 'VanillaOnlineStats', version: '0.4.1', demo: config.demo === true, playerLogin: 'authme-password', source: 'https://github.com/rromeradev/VanillaOnlineStats' }; }
+    @Get('public/info') info() { return { name: 'VanillaOnlineStats', version: '0.5.0', demo: config.demo === true, playerLogin: 'authme-password', source: 'https://github.com/rromeradev/VanillaOnlineStats' }; }
     @Get('public/servers') async publicServers() { return db.rows('SELECT id,name FROM vos_servers WHERE player_login=true ORDER BY name LIMIT 100'); }
     @Post('agents/heartbeat') @HttpCode(202)
     async heartbeat(@Headers('authorization') header: string, @Body() body: any) {
@@ -116,6 +135,7 @@ export async function createPlatform(config: PlatformConfig) {
       if (!server.capabilities?.authmePasswordLogin) fail(409);
       const result = await control.request(server, { kind:'PLAYER', actor_id:randomUUID() }, 'player.authme.login', {nickname,password}, 'link');
       if (result.state !== 'SUCCEEDED' || !UUID.test(result.payload?.playerId ?? '') || typeof result.payload?.name !== 'string') fail(401);
+      if(/^[a-f0-9]{32,64}$/.test(result.payload?.skin?.textureHash??''))await db.rows(`INSERT INTO vos_latest(tenant_id,server_id,kind,entity_id,occurred_at,encrypted_payload) VALUES($1,$2,'skin',$3,now(),$4) ON CONFLICT(tenant_id,server_id,kind,entity_id) DO UPDATE SET occurred_at=EXCLUDED.occurred_at,encrypted_payload=EXCLUDED.encrypted_payload`,[server.tenant_id,server.id,result.payload.playerId,db.vault.seal(result.payload.skin,db.context(server))]);
       return createSession(res, 'PLAYER', result.payload.playerId, result.payload.name.slice(0,64), server);
     }
     @Post('auth/player/link') @HttpCode(200)
@@ -177,7 +197,7 @@ export async function createPlatform(config: PlatformConfig) {
       const actor = await session(req), server = await db.admin(actor, id(serverId)); return db.latest(server, 'world');
     }
     @Get('servers/:serverId/events') async events(@Req() req: Request, @Param('serverId') serverId: string, @Query('hours') hours: string, @Query('type') type?: string) {
-      const actor = await session(req), server = await db.admin(actor, id(serverId)); await db.audit(server, actor.actor_id, 'events.read', 'SUCCEEDED'); return db.history(server, type ? text(type, 128) : null, since(hours), 500);
+      const actor = await session(req), server = await db.admin(actor, id(serverId)); await db.audit(server, actor.actor_id, 'events.read', 'SUCCEEDED'); return db.history(server, type ? text(type, 128) : null, since(hours), 500,null,!type);
     }
     @Get('servers/:serverId/catalog') async catalog(@Req() req: Request, @Param('serverId') serverId: string) {
       const actor = await session(req), server = await db.admin(actor, id(serverId)); return { queries: QUERIES, actions: ACTIONS, capabilities: server.capabilities, role: server.role };
@@ -253,9 +273,12 @@ export async function createPlatform(config: PlatformConfig) {
     @Get('me/servers/:serverId') async playerData(@Req() req: Request, @Param('serverId') serverId: string) {
       const { actor, server } = await scopedPlayer(req, id(serverId));
       const profiles = await db.latest(server, 'player', actor.actor_id);
+      const skin=await db.latest(server,'skin',actor.actor_id);
       const events = await db.history(server, null, new Date(Date.now() - 7 * 86400_000), 200, actor.actor_id);
       const safeEvents = events.map(event => ({ ...event, payload: Object.fromEntries(Object.entries(event.payload).filter(([key]) => ['durationSeconds','reason','Cause','Reason','Amount','Damage','FinalDamage','ExpToDrop','NewLevel','OldLevel','PreviousValue','NewValue','Statistic','advancement','root'].includes(key))) }));
-      return { server: { id: server.id, name: server.name, online: safeServer(server).online }, profile: profiles[0] ? { ...profiles[0], payload: sanitizePlayer(profiles[0].payload) } : null, events: safeEvents };
+      const observed=profiles[0]?.payload.skin;
+      const effective=skin[0]&&(!observed?.textureHash||skin[0].occurredAt>profiles[0].occurredAt)?skin[0].payload:observed;
+      return { server: safeServer(server), skin:effective, profile: profiles[0] ? { ...profiles[0], payload: sanitizePlayer(profiles[0].payload) } : null, events: safeEvents };
     }
     @Post('me/servers/:serverId/queries') @HttpCode(200)
     async playerQuery(@Req() req: Request, @Param('serverId') serverId: string, @Body() body: any) {
@@ -283,9 +306,11 @@ export async function createPlatform(config: PlatformConfig) {
   }
   app.useGlobalFilters(new SafeErrors()); app.getHttpAdapter().getInstance().disable('x-powered-by');
   app.use((req: Request, res: Response, next: () => void) => {
-    try { limits.check('http:' + req.socket.remoteAddress, 1200); } catch { res.status(429).json({ message: 'Limite de solicitações.' }); return; }
+    const token=cookie(req),hash=token?sha(token):'',until=rateSessions.get(hash)??0;
+    if(until<Date.now())rateSessions.delete(hash);
+    try { limits.check('http:' + (until>Date.now()?hash:req.socket.remoteAddress), 1200); } catch { res.status(429).json({ message: 'Limite de solicitações.' }); return; }
     res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Referrer-Policy', 'same-origin');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://blocksitems.com; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
     next();
   });
   app.use(json({ limit: '9mb', strict: true, inflate: false }));
@@ -299,6 +324,6 @@ export async function createPlatform(config: PlatformConfig) {
   const cleanup = setInterval(() => { void db.cleanup().catch(() => {}); }, 60_000); cleanup.unref();
   await db.cleanup();
   const close = app.close.bind(app);
-  app.close = async () => { clearInterval(cleanup); await control.close(); await close(); await db.close(); };
+  app.close = async () => { clearInterval(cleanup); for(const stop of stopStreams)stop(); await control.close(); await close(); await db.close(); };
   return { app, db, control };
 }

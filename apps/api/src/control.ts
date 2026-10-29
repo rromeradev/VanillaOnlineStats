@@ -69,10 +69,11 @@ export class Control {
         if (value.type === 'agent.capabilities') {
           const p = value.payload;
           if (!p || p.schemaVersion !== 1 || !Array.isArray(p.queries) || !Array.isArray(p.collectors) || p.queries.length > 64 || p.collectors.length > 32) throw new Error('capabilities');
-          const sanitized = { schemaVersion: 1, playerQueries: p.playerQueries === true, authmePasswordLogin: p.authmePasswordLogin === true, collectors: p.collectors.filter((v: any) => typeof v === 'string' && v.length < 64),
+          const sanitized = { schemaVersion: 1, playerQueries: p.playerQueries === true, authmePasswordLogin: p.authmePasswordLogin === true,
+            controls:{writesEnabled:p.controls?.writesEnabled===true,consoleEnabled:p.controls?.consoleEnabled===true,allowedOperations:Array.isArray(p.controls?.allowedOperations)?p.controls.allowedOperations.filter((op:any)=>Object.hasOwn(ACTIONS,op)):[]}, collectors: p.collectors.filter((v: any) => typeof v === 'string' && v.length < 64),
             queries: p.queries.filter((v: any) => QUERIES.includes(v)), privacy: Object.fromEntries(['players','positions','inventories','addresses','seeds'].map(key => [key, p.privacy?.[key] === true])),
             unsupported: Array.isArray(p.unsupported) ? p.unsupported.filter((v: any) => typeof v === 'string' && v.length < 128).slice(0, 64) : [] };
-          await this.db.rows('UPDATE vos_servers SET capabilities=$1 WHERE tenant_id=$2 AND id=$3', [JSON.stringify(sanitized), server.tenant_id, server.id]); return;
+          await this.db.rows('UPDATE vos_servers SET capabilities=$1 WHERE tenant_id=$2 AND id=$3', [JSON.stringify(sanitized), server.tenant_id, server.id]); this.db.notify(server.id); return;
         }
         if (value.type !== 'control.result') return;
         const pending = this.pending.get(value.actionId);
@@ -113,7 +114,7 @@ export class Control {
         const action = await this.db.one('UPDATE vos_actions SET state=$1,encrypted_result=$2 WHERE id=$3 AND tenant_id=$4 AND server_id=$5 RETURNING actor_id,operation', [state, this.db.vault.seal(payload, this.db.context(pending.server)), actionId, pending.server.tenant_id, pending.server.id]);
         if (action) await this.db.audit(pending.server, action.actor_id, action.operation, state, pending.correlation);
       }
-      pending.resolve({ id: actionId, state, payload });
+      this.db.notify(pending.server.id); pending.resolve({ id: actionId, state, payload });
     } catch { pending.resolve({ id: actionId, state: 'UNKNOWN', payload: null }); }
   }
   async revoke(serverId: string) { const ws = this.sockets.get(serverId); if (ws) ws.close(1008); }

@@ -57,7 +57,7 @@ control:
   tenant-id: ${tenantId}
   public-key: ${platform.control.publicKey}
   writes-enabled: true
-  allowed-operations: [world.time]
+  allowed-operations: [world.time, server.broadcast]
 `);
   output = createWriteStream(resolve(root,'console.log'));
   paper = spawn(resolve(arg('java')), ['-Xms256M','-Xmx768M','-XX:ActiveProcessorCount=2','-jar','paper.jar','--nogui'], {cwd:root, env:{...process.env,VOS_AGENT_TOKEN:token},stdio:['pipe','pipe','pipe']});
@@ -75,6 +75,8 @@ control:
   const worlds = await invoke('queries',{operation:'worlds.list',arguments:{}}); assert.equal(worlds.state,'SUCCEEDED'); assert.ok(worlds.payload.items.length>0);
   const worldId = worlds.payload.items[0].worldId;
   const action = await invoke('actions',{operation:'world.time',arguments:{worldId,value:6000},confirmed:true}); assert.equal(action.state,'SUCCEEDED');
+  const broadcast=await invoke('actions',{operation:'server.broadcast',arguments:{message:'VanillaOnlineStats integration test'},confirmed:true});assert.equal(broadcast.state,'SUCCEEDED');
+  const denied=await invoke('actions',{operation:'player.message',arguments:{playerId, message:'not allowed'},confirmed:true});assert.equal(denied.payload.reasonCode,'OPERATION_NOT_ALLOWED');
   const world = await invoke('queries',{operation:'world.snapshot',arguments:{worldId}}); assert.equal(world.state,'SUCCEEDED'); assert.ok(world.payload.time>=6000 && world.payload.time<6200); findings.push('Signed API query and world.time mutation completed by real Paper; result verified by readback.');
   const persisted = await platform.db.one('SELECT count(*)::int AS n FROM vos_audit WHERE server_id=$1',[serverId]); assert.ok(persisted.n>=6); findings.push('Scoped execution and audit history persisted.');
   await platform.db.rows('UPDATE vos_servers SET player_login=true WHERE id=$1',[serverId]);

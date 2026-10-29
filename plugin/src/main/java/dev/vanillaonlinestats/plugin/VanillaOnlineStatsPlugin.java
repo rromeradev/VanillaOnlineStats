@@ -79,6 +79,9 @@ public final class VanillaOnlineStatsPlugin extends JavaPlugin {
               bus);
       snapshots.host = host;
       collectors = new CollectorRegistry(this, settings, snapshots, bus, auth);
+      getServer()
+          .getScheduler()
+          .runTaskTimer(this, () -> collectors.livePlayers(this, snapshots, bus, auth), 20, 20);
       GameEvents events = new GameEvents(this, settings, bus, auth, links::revoke);
       auth.listen(this, authMe, events::authEvent);
       String agentToken = System.getenv("VOS_AGENT_TOKEN");

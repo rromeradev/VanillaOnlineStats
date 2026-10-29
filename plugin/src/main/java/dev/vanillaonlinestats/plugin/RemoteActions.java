@@ -48,6 +48,10 @@ final class RemoteActions {
     if (cached != null) proof.addProperty("playerId", cached.getUniqueId().toString());
     if (!proof.has("playerId") || proof.get("playerId").isJsonNull())
       throw new IllegalArgumentException("Account identity unavailable");
+    var sr = plugin.getServer().getPluginManager().getPlugin("SkinsRestorer");
+    if (settings.players() && sr != null && sr.isEnabled())
+      proof.add(
+          "skin", SkinSnapshot.stored(sr, UUID.fromString(proof.get("playerId").getAsString())));
     return proof;
   }
 
@@ -84,18 +88,23 @@ final class RemoteActions {
           "expiresAt",
           request.expiresAt().toString());
     }
-    if (!settings.actions()
-        || !settings.allowedActions().contains(op)
-        || !Set.of("ADMIN", "OWNER").contains(request.role()))
-      throw new IllegalArgumentException("Action disabled");
+    if (!settings.actions()) throw new ControlFailure("WRITES_DISABLED");
+    if (!settings.allowedActions().contains(op)) throw new ControlFailure("OPERATION_NOT_ALLOWED");
+    if (!Set.of("ADMIN", "OWNER").contains(request.role()))
+      throw new ControlFailure("ROLE_NOT_ALLOWED");
     boolean high =
-        Set.of("player.inventory.clear", "server.console", "world.save", "world.border")
+        Set.of(
+                "player.inventory.clear",
+                "server.console",
+                "world.save",
+                "world.border",
+                "player.teleport",
+                "world.gamerule")
             .contains(op);
     if (high
         && (!request.role().equals("OWNER")
             || !request.confirmed()
-            || !request.risk().equals("HIGH")))
-      throw new IllegalArgumentException("Owner confirmation required");
+            || !request.risk().equals("HIGH"))) throw new ControlFailure("OWNER_REQUIRED");
     switch (op) {
       case "player.kick" ->
           snapshots
@@ -194,7 +203,7 @@ final class RemoteActions {
       }
       case "world.save" -> snapshots.worldArg(args).save();
       case "server.console" -> {
-        if (!settings.console()) throw new IllegalArgumentException("Console disabled");
+        if (!settings.console()) throw new ControlFailure("CONSOLE_DISABLED");
         String command = text(args, "command", 512);
         String root = command.split(" ", 2)[0].toLowerCase(Locale.ROOT);
         Set<String> allowed =

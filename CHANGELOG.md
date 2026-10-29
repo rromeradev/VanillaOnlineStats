@@ -1,6 +1,13 @@
 # Changelog
 
-## Não lançado
+## 0.5.0 — 2026-10-29
+
+- Plugin 0.4.0: snapshots de jogadores autenticados a cada segundo, limitados pelo orçamento de coleta.
+- Atualização automática por SSE autenticado e isolado por servidor, reconexão e atualização periódica de recuperação.
+- Controles anunciam a política local e retornam motivos específicos; broadcast verificado com Paper real.
+- Ícones, metadados e renders de itens/blocos pela BlocksItems API 2026.1.2, com limites e cache.
+- Cabeças e modelos 3D a partir da skin aplicada no Paper; integração opcional com a API pública do SkinsRestorer.
+- Desconectar do Minecraft preserva a sessão web; logout explícito continua revogando-a.
 
 - Stack Compose completo para Coolify 4.5.3, com exemplos de variáveis, geração nativa de senhas/Base64 e UUID/Ed25519 persistentes.
 - Testes de identidade automática, preservação no redeploy e rotas do painel no stack completo.

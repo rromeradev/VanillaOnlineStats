@@ -139,6 +139,26 @@ final class CollectorRegistry {
     }
   }
 
+  private int liveCursor;
+
+  void livePlayers(JavaPlugin plugin, Snapshots snapshots, Telemetry bus, AuthMeBridge auth) {
+    if (!settings.players()) return;
+    var players = plugin.getServer().getOnlinePlayers().toArray(org.bukkit.entity.Player[]::new);
+    if (players.length == 0) return;
+    JsonArray items = new JsonArray();
+    long until = System.nanoTime() + settings.budgetNanos();
+    for (int count = 0; count < Math.min(settings.maxPlayers(), players.length); count++) {
+      var player = players[liveCursor++ % players.length];
+      if (auth.authenticated(player)) items.add(snapshots.player(player, false));
+      if (System.nanoTime() >= until) break;
+    }
+    if (liveCursor > 1000000) liveCursor = 0;
+    bus.emit(
+        "players.live.snapshot",
+        object("items", items, "partial", items.size() < players.length),
+        false);
+  }
+
   JsonObject status() {
     return object(
         "runs",
@@ -161,6 +181,14 @@ final class CollectorRegistry {
         true,
         "authmePasswordLogin",
         true,
+        "controls",
+        object(
+            "writesEnabled",
+            settings.actions(),
+            "consoleEnabled",
+            settings.console(),
+            "allowedOperations",
+            settings.allowedActions()),
         "collectors",
         collectors.stream().map(Collector::id).toList(),
         "privacy",

@@ -185,8 +185,8 @@ final class Snapshots {
   }
 
   JsonObject player(Player player, boolean details) {
-    if (!settings.players() || !auth.authenticated(player))
-      throw new IllegalArgumentException("Player collection unavailable");
+    if (!settings.players()) throw new ControlFailure("PLAYER_COLLECTION_DISABLED");
+    if (!auth.authenticated(player)) throw new ControlFailure("PLAYER_NOT_AUTHENTICATED");
     JsonObject result =
         object(
             "uuid",
@@ -229,6 +229,7 @@ final class Snapshots {
             player.getFirstPlayed(),
             "lastPlayed",
             player.getLastPlayed());
+    result.add("skin", SkinSnapshot.profile(player.getPlayerProfile().getTextures()));
     JsonArray effects = new JsonArray();
     player
         .getActivePotionEffects()
@@ -259,8 +260,7 @@ final class Snapshots {
   }
 
   JsonObject inventories(Player player) {
-    if (!settings.inventories())
-      throw new IllegalArgumentException("Inventory collection disabled");
+    if (!settings.inventories()) throw new ControlFailure("INVENTORY_COLLECTION_DISABLED");
     player(player, false);
     return object(
         "uuid",
@@ -349,6 +349,10 @@ final class Snapshots {
           object(
               "key",
               advancement.getKey().toString(),
+              "icon",
+              advancement.getDisplay() == null
+                  ? null
+                  : advancement.getDisplay().icon().getType().getKey().toString(),
               "complete",
               progress.isDone(),
               "awardedCriteria",
@@ -549,7 +553,7 @@ final class Snapshots {
   Player playerArg(JsonObject args) {
     Player player =
         plugin.getServer().getPlayer(UUID.fromString(args.get("playerId").getAsString()));
-    if (player == null) throw new IllegalArgumentException("Player unavailable");
+    if (player == null) throw new ControlFailure("PLAYER_OFFLINE");
     return player;
   }
 

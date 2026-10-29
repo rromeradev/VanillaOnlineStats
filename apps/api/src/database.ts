@@ -4,10 +4,13 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Vault, canonical, fail, sha, UUID } from './security';
+import { EventEmitter } from 'node:events';
 
 export interface Server { id: string; tenant_id: string; name: string; agent_hash: string; last_seen: Date | null; player_login: boolean; capabilities: any }
 export interface Session { token_hash: string; kind: 'ADMIN' | 'PLAYER'; actor_id: string; tenant_id: string | null; server_id: string | null; display_name: string; expires_at: Date; reauthenticated_at: Date | null }
 export class Database {
+  readonly changes = new EventEmitter().setMaxListeners(128);
+  notify(serverId: string) { this.changes.emit(serverId); }
   readonly pool: Pool; readonly vault: Vault;
   constructor(url: string, key: string) { this.pool = new Pool({ connectionString: url, max: 10, connectionTimeoutMillis: 5000, statement_timeout: 10_000 }); this.vault = new Vault(key); this.pool.on('error', () => {}); }
   async migrate() {
@@ -53,12 +56,12 @@ export class Database {
         const received = result.rows[0].received_at; ids.push(entry.messageId); receipts.set(entry.messageId, received);
         await this.project(client, server, entry);
         await client.query('UPDATE vos_servers SET last_seen=GREATEST(COALESCE(last_seen,$2),$2) WHERE id=$1', [server.id, received]);
-        if (entry.type.startsWith('auth.') && (entry.type.includes('ended') || entry.type.includes('Unregister'))) {
+        if (entry.type.startsWith('auth.') && (entry.type.includes('ended') || entry.type.includes('Unregister')) && entry.payload.reason !== 'disconnect') {
           if (player) await client.query("DELETE FROM vos_sessions WHERE kind='PLAYER' AND tenant_id=$1 AND server_id=$2 AND actor_id=$3", [server.tenant_id, server.id, player]);
           else await client.query("DELETE FROM vos_sessions WHERE kind='PLAYER' AND tenant_id=$1 AND server_id=$2", [server.tenant_id, server.id]);
         }
       }
-      await client.query('COMMIT'); return { ids, receipts };
+      await client.query('COMMIT'); this.notify(server.id); return { ids, receipts };
     } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
   }
   private async project(client: PoolClient, server: Server, entry: any) {
@@ -68,10 +71,10 @@ export class Database {
         [server.tenant_id, server.id, kind, entity, entry.occurredAt, this.vault.seal(payload, this.context(server))]);
     };
     if (entry.type.endsWith('.snapshot') || ['server.heartbeat','events.counters','chunks.sample','integrations.status','host.filesystem'].includes(entry.type)) await update('snapshot', entry.type, entry.payload);
-    if (entry.type === 'players.snapshot' || entry.type === 'worlds.snapshot') {
+    if (entry.type === 'players.snapshot' || entry.type === 'players.live.snapshot' || entry.type === 'worlds.snapshot') {
       for (const item of entry.payload.items ?? []) {
         const key = item.uuid ?? item.worldId;
-        if (typeof key === 'string' && UUID.test(key)) await update(entry.type === 'players.snapshot' ? 'player' : 'world', key, item);
+        if (typeof key === 'string' && UUID.test(key)) await update(entry.type.startsWith('players.') ? 'player' : 'world', key, item);
       }
     }
     if (entry.type === 'server.performance.snapshot') {
@@ -94,9 +97,11 @@ export class Database {
     const rows = await this.rows('SELECT kind,entity_id,occurred_at,encrypted_payload FROM vos_latest WHERE tenant_id=$1 AND server_id=$2 AND kind=$3 AND ($4::text IS NULL OR entity_id=$4) ORDER BY occurred_at DESC LIMIT 500', [server.tenant_id, server.id, kind, entity ?? null]);
     return rows.map(row => ({ id: row.entity_id, occurredAt: row.occurred_at, payload: this.vault.open(row.encrypted_payload, this.context(server)) }));
   }
-  async history(server: Server, type: string | null, since: Date, limit: number, player: string | null = null) {
+  async history(server: Server, type: string | null, since: Date, limit: number, player: string | null = null, eventsOnly=false) {
     const rows = await this.rows(`SELECT message_id,type,occurred_at,received_at,encrypted_payload FROM vos_messages WHERE tenant_id=$1 AND server_id=$2
-      AND occurred_at >= $3 AND ($4::text IS NULL OR type=$4) AND ($5::uuid IS NULL OR player_id=$5) ORDER BY occurred_at DESC LIMIT $6`, [server.tenant_id, server.id, since, type, player, limit]);
+      AND occurred_at >= $3 AND ($4::text IS NULL OR type=$4) AND ($5::uuid IS NULL OR player_id=$5)
+      AND (NOT $7 OR (type NOT LIKE '%.snapshot' AND type NOT IN ('server.heartbeat','events.counters','chunks.sample','host.filesystem','integrations.status')))
+      ORDER BY occurred_at DESC LIMIT $6`, [server.tenant_id, server.id, since, type, player, limit, eventsOnly]);
     return rows.reverse().map(row => ({ id: row.message_id, type: row.type, occurredAt: row.occurred_at, receivedAt: row.received_at, payload: this.vault.open(row.encrypted_payload, this.context(server)) }));
   }
   async cleanup() {
