@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.0 — 2026-10-29
+
+- WebSocket persistente entre painel/API, com snapshot inicial e entrega de mudanças; removidos polling HTTP, SSE de invalidação e endpoints antigos de polling.
+- Plugin 0.5.0: assinaturas de leitura com leases, orçamento de coleta, deduplicação e cancelamento; mudanças publicadas diretamente pelo WSS.
+- Telemetria do agente pelo WSS com ACK após commit; o transporte HTTP anterior só é usado durante indisponibilidade/compatibilidade do canal.
+- Isolamento por sessão/tenant/servidor/ator, validação de Origin, revogação, descarte de assinaturas antigas e proteção contra consumidores lentos.
+- Testes de navegador confirmam zero HTTP de dados e zero consultas nativas repetidas, inclusive com mudanças, reconexão e detalhes abertos.
+- Paper real valida mudança de horário originada no console chegando pela assinatura; CI verifica upgrade WebSocket no stack Compose.
+
+
 ## 0.5.1 — 2026-10-29
 
 - Todas as telas carregam automaticamente; removidos os botões de atualizar e de iniciar consultas de inventário, estatísticas e conquistas.

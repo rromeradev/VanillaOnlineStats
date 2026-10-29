@@ -208,4 +208,34 @@ class ReleaseCoreTest {
                 new Telemetry(server, 16, 65536),
                 65536));
   }
+
+  @Test
+  void signedWatchesAreReadOnlyAndPlayerScoped() throws Exception {
+    var frame = body();
+    var actor = UUID.randomUUID().toString();
+    frame.addProperty("actorId", actor);
+    frame.addProperty("actorRole", "PLAYER");
+    frame.addProperty("kind", "watch");
+    frame.addProperty("operation", "player.inventory");
+    frame.add(
+        "arguments",
+        Telemetry.object(
+            "watchId",
+            UUID.randomUUID().toString(),
+            "query",
+            Telemetry.object("playerId", actor),
+            "stop",
+            false));
+    assertEquals("watch", verifier().verify(sign(frame), Instant.now()).kind());
+    frame
+        .getAsJsonObject("arguments")
+        .getAsJsonObject("query")
+        .addProperty("playerId", UUID.randomUUID().toString());
+    assertThrows(
+        GeneralSecurityException.class, () -> verifier().verify(sign(frame), Instant.now()));
+    frame.addProperty("actorRole", "OWNER");
+    frame.addProperty("operation", "server.broadcast");
+    assertThrows(
+        GeneralSecurityException.class, () -> verifier().verify(sign(frame), Instant.now()));
+  }
 }

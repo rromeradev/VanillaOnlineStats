@@ -10,7 +10,7 @@ export interface Server { id: string; tenant_id: string; name: string; agent_has
 export interface Session { token_hash: string; kind: 'ADMIN' | 'PLAYER'; actor_id: string; tenant_id: string | null; server_id: string | null; display_name: string; expires_at: Date; reauthenticated_at: Date | null }
 export class Database {
   readonly changes = new EventEmitter().setMaxListeners(128);
-  notify(serverId: string) { this.changes.emit(serverId); }
+  notify(serverId: string, change?: {messages:any[]}) { this.changes.emit(serverId,change); }
   readonly pool: Pool; readonly vault: Vault;
   constructor(url: string, key: string) { this.pool = new Pool({ connectionString: url, max: 10, connectionTimeoutMillis: 5000, statement_timeout: 10_000 }); this.vault = new Vault(key); this.pool.on('error', () => {}); }
   async migrate() {
@@ -40,6 +40,7 @@ export class Database {
   context(server: Server) { return server.tenant_id + ':' + server.id; }
   async audit(server: Server, actor: string, operation: string, outcome: string, correlation: string | null = null) {
     await this.rows('INSERT INTO vos_audit(id,tenant_id,server_id,actor_id,operation,outcome,correlation_id) VALUES($1,$2,$3,$4,$5,$6,$7)', [randomUUID(), server.tenant_id, server.id, actor, operation, outcome, correlation]);
+    if(!operation.endsWith('.read')&&!operation.startsWith('watch.')&&!operation.startsWith('live.'))this.notify(server.id);
   }
   async ingest(server: Server, messages: any[]): Promise<{ ids: string[]; receipts: Map<string, Date> }> {
     const client = await this.pool.connect(); const ids: string[] = []; const receipts = new Map<string, Date>();
@@ -61,7 +62,7 @@ export class Database {
           else await client.query("DELETE FROM vos_sessions WHERE kind='PLAYER' AND tenant_id=$1 AND server_id=$2", [server.tenant_id, server.id]);
         }
       }
-      await client.query('COMMIT'); this.notify(server.id); return { ids, receipts };
+      await client.query('COMMIT'); this.notify(server.id,{messages}); return { ids, receipts };
     } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
   }
   private async project(client: PoolClient, server: Server, entry: any) {

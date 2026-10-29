@@ -20,6 +20,11 @@ final class BatchSender implements AutoCloseable {
   private volatile String status = "desativado";
   private int failures;
   private long next;
+  private volatile java.util.function.BooleanSupplier delegate = () -> false;
+
+  void delegate(java.util.function.BooleanSupplier delegate) {
+    this.delegate = delegate;
+  }
 
   BatchSender(Settings settings, Telemetry bus, String token) {
     this.bus = bus;
@@ -33,6 +38,10 @@ final class BatchSender implements AutoCloseable {
     status = "aguardando";
     worker.scheduleWithFixedDelay(
         () -> {
+          if (delegate.getAsBoolean()) {
+            status = "conectado (WebSocket)";
+            return;
+          }
           if (System.nanoTime() < next) return;
           try {
             bus.expire(Instant.now().minusSeconds(300));

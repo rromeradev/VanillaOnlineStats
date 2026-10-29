@@ -39,5 +39,26 @@ class ContractTest(unittest.TestCase):
             self.assertFalse(VALIDATOR.is_valid(data))
 
 
+class WatchContractTest(unittest.TestCase):
+    def test_read_only_watch_contract(self):
+        schema = json.loads((ROOT / "control-body.schema.json").read_text())
+        Draft202012Validator.check_schema(schema)
+        validator = Draft202012Validator(schema, format_checker=FormatChecker())
+        uid = "11111111-1111-4111-8111-111111111111"
+        value = dict(schemaVersion=1, actionId=uid, actorId=uid, actorRole="PLAYER", serverId=uid,
+                     tenantId=uid, operation="player.inventory", kind="watch",
+                     arguments=dict(watchId=uid, query=dict(playerId=uid), stop=False),
+                     issuedAt="2026-10-29T00:00:00Z", expiresAt="2026-10-29T00:00:25Z",
+                     riskLevel="LOW", confirmed=False, nonce=uid, auditCorrelationId=uid)
+        validator.validate(value)
+        for key, invalid in [("operation", "server.broadcast"), ("riskLevel", "HIGH"), ("confirmed", True)]:
+            case = copy.deepcopy(value)
+            case[key] = invalid
+            self.assertFalse(validator.is_valid(case))
+        case = copy.deepcopy(value)
+        case["arguments"]["watchId"] = "invalid"
+        self.assertFalse(validator.is_valid(case))
+
+
 if __name__ == "__main__":
     unittest.main()

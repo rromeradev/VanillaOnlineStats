@@ -81,12 +81,21 @@ final class ControlSecurity {
           kind = value.get("kind").getAsString(),
           operation = value.get("operation").getAsString(),
           risk = value.get("riskLevel").getAsString();
+      if (kind.equals("watch")) {
+        var args = value.getAsJsonObject("arguments");
+        if (!args.keySet().equals(Set.of("watchId", "query", "stop"))
+            || !args.get("query").isJsonObject()
+            || !args.get("stop").isJsonPrimitive()
+            || !args.get("stop").getAsJsonPrimitive().isBoolean())
+          throw new GeneralSecurityException("watch arguments");
+        UUID.fromString(args.get("watchId").getAsString());
+      }
       if (!Set.of("ADMIN", "OWNER").contains(role)
           && !(role.equals("PLAYER")
               && kind.equals("link")
               && Set.of("player.link.redeem", "player.authme.login").contains(operation))
           && !(role.equals("PLAYER")
-              && kind.equals("query")
+              && (kind.equals("query") || kind.equals("watch"))
               && Set.of(
                       "player.snapshot",
                       "player.inventory",
@@ -96,14 +105,23 @@ final class ControlSecurity {
               && value
                   .get("actorId")
                   .getAsString()
-                  .equals(value.getAsJsonObject("arguments").get("playerId").getAsString())))
-        throw new GeneralSecurityException("role");
-      if (!Set.of("query", "action", "link").contains(kind)
+                  .equals(
+                      (kind.equals("watch")
+                              ? value.getAsJsonObject("arguments").getAsJsonObject("query")
+                              : value.getAsJsonObject("arguments"))
+                          .get("playerId")
+                          .getAsString()))) throw new GeneralSecurityException("role");
+      if (!Set.of("query", "action", "link", "watch").contains(kind)
           || !operation.matches("[a-z][a-z0-9.-]{1,63}")
           || !Set.of("LOW", "MEDIUM", "HIGH").contains(risk))
         throw new GeneralSecurityException("operation");
       if (!value.get("confirmed").getAsJsonPrimitive().isBoolean())
         throw new GeneralSecurityException("confirmation");
+      if (kind.equals("watch")
+          && (!LiveWatches.QUERIES.contains(operation)
+              || !risk.equals("LOW")
+              || value.get("confirmed").getAsBoolean()))
+        throw new GeneralSecurityException("read-only watch");
       return new Request(
           UUID.fromString(value.get("actionId").getAsString()),
           UUID.fromString(value.get("actorId").getAsString()),

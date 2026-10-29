@@ -192,6 +192,8 @@ final class CollectorRegistry {
     return object(
         "schemaVersion",
         1,
+        "streaming",
+        true,
         "playerQueries",
         true,
         "authmePasswordLogin",

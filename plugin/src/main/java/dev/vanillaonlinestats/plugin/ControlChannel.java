@@ -7,6 +7,7 @@ import com.google.gson.*;
 import java.net.http.*;
 import java.nio.file.Path;
 import java.time.*;
+import java.util.*;
 import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
@@ -52,6 +53,13 @@ final class ControlChannel implements AutoCloseable {
   private int requests;
   private int readRequests;
   private int frames;
+  private int watchRequests;
+  private final LiveWatches watches;
+  private final Telemetry telemetry;
+  private volatile boolean streaming;
+  private volatile boolean telemetryStreaming;
+  private volatile List<Telemetry.Entry> streamBatch = List.of();
+  private long streamSent;
 
   ControlChannel(
       JavaPlugin plugin,
@@ -60,12 +68,34 @@ final class ControlChannel implements AutoCloseable {
       Path directory,
       String token,
       RemoteActions actions,
-      CollectorRegistry registry)
+      CollectorRegistry registry,
+      Telemetry telemetry)
       throws Exception {
     this.plugin = plugin;
     this.settings = settings;
     this.actions = actions;
     this.registry = registry;
+    this.telemetry = telemetry;
+    watches =
+        new LiveWatches(
+            settings.budgetNanos(),
+            actions::execute,
+            (id, value) -> {
+              value.addProperty("type", "watch.update");
+              value.addProperty("watchId", id.toString());
+              WebSocket active = socket;
+              if (active != null) send(active, value);
+            });
+    plugin
+        .getServer()
+        .getScheduler()
+        .runTaskTimer(
+            plugin,
+            () -> {
+              if (streaming && !closed) watches.tick();
+            },
+            1,
+            1);
     security = new ControlSecurity(settings.publicKey(), serverId, settings.tenantId());
     audit = new AuditLedger(directory);
     client =
@@ -91,6 +121,7 @@ final class ControlChannel implements AutoCloseable {
         0,
         5,
         TimeUnit.SECONDS);
+    reconnect.scheduleWithFixedDelay(this::flushTelemetry, 200, 200, TimeUnit.MILLISECONDS);
   }
 
   private final class Listener implements WebSocket.Listener {
@@ -157,10 +188,28 @@ final class ControlChannel implements AutoCloseable {
       requests = 0;
       readRequests = 0;
       frames = 0;
+      watchRequests = 0;
     }
-    if (++frames > 1000) {
+    if (++frames > 2000) {
       origin.abort();
       disconnected(origin);
+      return;
+    }
+    try {
+      var value = JsonParser.parseString(raw).getAsJsonObject();
+      if (value.has("type") && value.get("type").getAsString().equals("agent.ready")) {
+        streaming = value.has("watches") && value.get("watches").getAsBoolean();
+        telemetryStreaming =
+            value.has("telemetry")
+                && value.get("telemetry").getAsBoolean()
+                && settings.telemetryEndpoint() != null;
+        return;
+      }
+      if (value.has("type") && value.get("type").getAsString().equals("agent.telemetry.ack")) {
+        ackTelemetry(value.getAsJsonArray("ids"));
+        return;
+      }
+    } catch (RuntimeException invalid) {
       return;
     }
     ControlSecurity.Request request;
@@ -170,7 +219,9 @@ final class ControlChannel implements AutoCloseable {
       send(origin, object("type", "control.rejected", "reason", "INVALID_OR_UNAUTHORIZED"));
       return;
     }
-    if (request.kind().equals("query") ? ++readRequests > 600 : ++requests > 30) {
+    if (request.kind().equals("watch")
+        ? ++watchRequests > 256
+        : request.kind().equals("query") ? ++readRequests > 600 : ++requests > 30) {
       send(origin, result(request, "REJECTED", object("reasonCode", "RATE_LIMITED")));
       return;
     }
@@ -219,7 +270,10 @@ final class ControlChannel implements AutoCloseable {
                       && !closed
                       && healthy
                       && request.expiresAt().isAfter(Instant.now())) {
-                    payload = actions.execute(request);
+                    if (request.kind().equals("watch")) {
+                      watches.accept(request);
+                      payload = object("subscribed", true);
+                    } else payload = actions.execute(request);
                     outcome = "SUCCEEDED";
                   } else if (!request.expiresAt().isAfter(Instant.now())) outcome = "EXPIRED";
                 } catch (Exception failed) {
@@ -240,6 +294,18 @@ final class ControlChannel implements AutoCloseable {
                       () -> {
                         try {
                           audit.result(request, completed);
+                          if (request.kind().equals("watch") && !completed.equals("SUCCEEDED"))
+                            send(
+                                origin,
+                                object(
+                                    "type",
+                                    "watch.error",
+                                    "watchId",
+                                    request.arguments().get("watchId").getAsString(),
+                                    "payload",
+                                    data == null
+                                        ? object("reasonCode", "SUBSCRIPTION_FAILED")
+                                        : data));
                           send(origin, result(request, completed, data));
                         } catch (Exception failure) {
                           healthy = false;
@@ -275,8 +341,14 @@ final class ControlChannel implements AutoCloseable {
   }
 
   private synchronized void send(WebSocket origin, JsonObject value) {
+    sendFrame(origin, value, 65536);
+  }
+
+  private synchronized void sendFrame(WebSocket origin, JsonObject value, int limit) {
     String json = value.toString();
-    if (closed || socket != origin || json.length() > 65536) return;
+    if (closed
+        || socket != origin
+        || json.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > limit) return;
     if (sending.incrementAndGet() > 32) {
       sending.decrementAndGet();
       origin.abort();
@@ -300,12 +372,59 @@ final class ControlChannel implements AutoCloseable {
   private void disconnected(WebSocket origin) {
     if (socket == origin) {
       socket = null;
+      streaming = false;
+      telemetryStreaming = false;
+      streamBatch = List.of();
+      if (plugin.isEnabled()) plugin.getServer().getScheduler().runTask(plugin, watches::clear);
       if (healthy) state = "desconectado; reconectando";
     }
   }
 
   String status() {
-    return state + " pendentes=" + inFlight.get();
+    return state + " pendentes=" + inFlight.get() + " assinaturas=" + watches.size();
+  }
+
+  boolean telemetryActive() {
+    return telemetryStreaming && socket != null && !closed;
+  }
+
+  private synchronized void flushTelemetry() {
+    WebSocket active = socket;
+    if (!telemetryActive() || active == null) return;
+    Instant cutoff = Instant.now().minusSeconds(300);
+    telemetry.expire(cutoff);
+    if (streamBatch.stream().anyMatch(entry -> entry.occurredAt().isBefore(cutoff)))
+      streamBatch = List.of();
+    if (!streamBatch.isEmpty() && System.nanoTime() - streamSent < 3_000_000_000L) return;
+    if (streamBatch.isEmpty()) {
+      var selected = new ArrayList<Telemetry.Entry>();
+      int bytes = 0;
+      for (var entry : telemetry.batch(Math.min(settings.batchMessages(), 32))) {
+        if (bytes + entry.bytes() > 200000) break;
+        selected.add(entry);
+        bytes += entry.bytes();
+      }
+      streamBatch = List.copyOf(selected);
+    }
+    if (streamBatch.isEmpty()) return;
+    JsonArray values = new JsonArray();
+    streamBatch.forEach(entry -> values.add(JsonParser.parseString(entry.json())));
+    streamSent = System.nanoTime();
+    sendLarge(active, object("type", "agent.telemetry", "messages", values));
+  }
+
+  private synchronized void ackTelemetry(JsonArray ids) {
+    if (ids == null) return;
+    Set<String> allowed = new HashSet<>();
+    streamBatch.forEach(entry -> allowed.add(entry.messageId()));
+    Set<String> accepted = new HashSet<>();
+    for (var id : ids) if (allowed.contains(id.getAsString())) accepted.add(id.getAsString());
+    telemetry.acknowledge(accepted);
+    streamBatch = List.of();
+  }
+
+  private synchronized void sendLarge(WebSocket origin, JsonObject value) {
+    sendFrame(origin, value, 262144);
   }
 
   @Override
@@ -313,6 +432,8 @@ final class ControlChannel implements AutoCloseable {
     closed = true;
     WebSocket active = socket;
     socket = null;
+    streaming = false;
+    watches.clear();
     if (active != null) active.abort();
     work.shutdownNow();
     reconnect.shutdownNow();

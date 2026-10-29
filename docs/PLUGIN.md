@@ -1,6 +1,6 @@
 # Plugin Paper/AuthMe
 
-Versão atual: **0.4.1**, integrada à plataforma 0.5.1. Baseline: Paper 26.3 build 227, Java 25 e AuthMe 6.0.1-b2770. As funcionalidades abaixo são a cobertura atual, não uma promessa de todas as funções da especificação.
+Versão atual: **0.5.0**, integrada à plataforma 0.6.0. Baseline: Paper 26.3 build 227, Java 25 e AuthMe 6.0.1-b2770. As funcionalidades abaixo são a cobertura atual, não uma promessa de todas as funções da especificação.
 
 ## Instalação
 
@@ -75,9 +75,13 @@ Use `vos status`, `vos collectors`, `vos capabilities` e `vos queue`. No console
 
 ## Configuração de telemetria e controle
 
-Na plataforma 0.5.1, o painel recebe notificações SSE autenticadas e acompanha os dados automaticamente, sem botões de atualização. O plugin 0.4.1 envia desempenho, mundos e jogadores autenticados a cada segundo, com rotação e orçamento de coleta. Eventos continuam sujeitos à fila e à disponibilidade da rede; não há garantia de latência fixa. Inventário, estatísticas e conquistas são consultados automaticamente enquanto a respectiva tela está visível e exigem jogador online e autenticado. As páginas seguintes são navegação; a página selecionada também é atualizada automaticamente.
+Na plataforma 0.6.0, o painel mantém uma conexão WebSocket autenticada em `/api/v1/panel`. Recebe o estado inicial e depois os eventos/projeções alterados, sem polling HTTP, sem SSE de invalidação e sem consultas repetidas ao agente. Trocar a tela ou os argumentos troca a assinatura; ocultar a aba a pausa. Ao reconectar, o estado é ressincronizado uma vez.
 
-Leituras automáticas usam rotas GET autenticadas, assinatura Ed25519 no agente e cache de até 900 ms compartilhado por ator/alvo/argumentos. As permissões são verificadas em cada acesso, inclusive ao cache. São até 90 leituras nativas por ator/minuto e 600 por servidor/minuto, com até quatro consultas pendentes e seis solicitações totais na API, reservando capacidade para comandos, e oito no agente. Ao atingir limites ou perder a conexão, o painel tenta novamente com espera progressiva. A observação contínua é auditada ao iniciar e a cada minuto; cada leitura automática não cria um comando persistente. As ações mantêm os limites e as confirmações anteriores e nunca se repetem automaticamente.
+Inventário, estatísticas, conquistas e consultas administrativas usam assinaturas Ed25519 `kind: watch`, exclusivamente de leitura. O plugin observa os alvos na thread principal e envia `watch.update` somente quando o resultado muda. O agendamento tem intervalo mínimo de 200 ms por assinatura, rotação, até quatro amostras por tick e orçamento local; não há garantia de latência fixa sob carga/rede. São até 64 assinaturas por agente, compartilhadas entre abas do mesmo ator/alvo. Cada assinatura tem lease de 75 s renovado por frame assinado a cada 30 s. Cancelar a assinatura ou desconectar a API encerra a coleta. As permissões locais e a autenticação do jogador são verificadas em cada amostra.
+
+A telemetria passa pelo mesmo WSS do agente, com ACK dos envelopes após commit no PostgreSQL. Enquanto esse transporte está negociado, o emissor HTTP de lotes fica suspenso. Se o WSS do agente cair, a fila conserva o funcionamento HTTP anterior até reconectar; esse mecanismo não cria consultas HTTP no navegador. `telemetry.endpoint` deve continuar configurado para habilitar o envio. Inventário e consultas próprias exigem personagem online/autenticado e a política de privacidade correspondente.
+
+O painel verifica cookie, Origin exato, tenant/servidor e permissões ao assinar e antes de entregar dados. São até quatro conexões por sessão, frames recebidos limitados e encerramento de consumidores lentos. Revogação de acesso/sessão impede novas entregas. Heartbeats de conexão e renovações de lease não são consultas de dados. Ações continuam separadas, com confirmação e allowlist, e nunca são repetidas automaticamente.
 
 Para habilitar um aviso administrativo, ajuste localmente a seção existente, preservando endpoint, tenant-id e public-key:
 

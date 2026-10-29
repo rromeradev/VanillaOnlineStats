@@ -98,7 +98,9 @@ public final class VanillaOnlineStatsPlugin extends JavaPlugin {
                   getDataFolder().toPath(),
                   agentToken,
                   new RemoteActions(this, settings, snapshots, links, auth),
-                  collectors);
+                  collectors,
+                  bus);
+        if (control != null) batches.delegate(control::telemetryActive);
       }
       if (getConfig().getBoolean("heartbeat.enabled", false)) {
         int interval = getConfig().getInt("heartbeat.interval-seconds", 10);

@@ -9,7 +9,7 @@ heartbeat:
   allow-loopback-http: false
 # Credencial somente via variavel de ambiente VOS_AGENT_TOKEN; nunca neste arquivo.
 telemetry:
-  # Vazio mantém coleta local. API 0.4 recebe os lotes autenticados.
+  # Vazio mantém coleta local. Com WSS ativo, este endpoint é a contingência HTTP.
   endpoint: ''
 collectors:
   period-seconds: 10

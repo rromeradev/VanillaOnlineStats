@@ -16,6 +16,14 @@ O canal de controle é de saída, com Ed25519, tenant/servidor/ator, TTL, nonce 
 
 Payloads e resultados persistidos são cifrados por AES-256-GCM com contexto tenant/servidor. Contratos versionados ficam em `packages/api-contracts`. A baseline fixada evita prometer compatibilidade com versões não verificadas.
 
+## Atualizações persistentes
+
+O navegador abre `/api/v1/panel` com cookie de sessão e Origin exato. Uma assinatura seleciona servidor, seção e consulta de leitura. A API envia o snapshot inicial, depois os envelopes confirmados e as mudanças privadas autorizadas. Não há cronômetro de polling ou SSE que dispare requisições HTTP no painel. Novas conexões/trocas de tela fazem uma ressincronização; abas ocultas cancelam a assinatura até voltarem.
+
+No WSS do agente, `agent.telemetry` recebe ACK após persistência. Assinaturas nativas de leitura são entregues com a mesma assinatura Ed25519, escopo e proteção contra replay dos controles. O agente mantém leases limitados e publica somente diferenças por `watch.update`, respeitando o orçamento da thread principal. A API compartilha uma assinatura entre abas equivalentes e a cancela ao sair o último consumidor. Dados de Player são filtrados pelo UUID antes de sair da API; permissões são revalidadas antes de cada entrega.
+
+O mesmo proxy/porta HTTP(S) deve encaminhar Upgrade WebSocket. `APP_ORIGIN` deve corresponder ao domínio usado no navegador. Não são necessários token exposto no frontend nem porta pública adicional. A CI verifica o upgrade autenticado no container do stack e a integração com um agente Paper real.
+
 ## Limites atuais
 
 Uma instância de API por instalação: sockets e solicitações pendentes são locais ao processo. Retenção automática: mensagens 30 dias, últimas projeções 7 dias, resultados de consultas/ações 7 dias. Auditoria, identidades e pedidos de privacidade não expiram automaticamente. Histórico retorna até 500 eventos ou 1.000 amostras/registros exportados, sem paginação histórica completa.

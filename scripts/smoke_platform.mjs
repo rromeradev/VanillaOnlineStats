@@ -9,6 +9,7 @@ import { spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 const require = createRequire(new URL('../apps/api/package.json', import.meta.url));
+const WebSocket=require('ws');
 const { Pool } = require('pg'), { createPlatform } = require('./dist/platform.js'), { sha } = require('./dist/security.js');
 const argv = process.argv.slice(2), arg = name => argv[argv.indexOf('--' + name) + 1];
 for (const name of ['java','paper','authme','plugin','output']) if (!argv.includes('--' + name)) throw new Error('Missing --' + name);
@@ -76,10 +77,22 @@ control:
   const worldId = worlds.payload.items[0].worldId;
   const action = await invoke('actions',{operation:'world.time',arguments:{worldId,value:6000},confirmed:true}); assert.equal(action.state,'SUCCEEDED');
   for(let n=0;n<28;n++){const read=await invoke('queries',{operation:'server.snapshot',arguments:{}});assert.equal(read.state,'SUCCEEDED');}
-  const automatic=await invoke('live?operation=server.performance');assert.equal(automatic.state,'SUCCEEDED');
   const broadcast=await invoke('actions',{operation:'server.broadcast',arguments:{message:'VanillaOnlineStats integration test'},confirmed:true});assert.equal(broadcast.state,'SUCCEEDED');
   const denied=await invoke('actions',{operation:'player.message',arguments:{playerId, message:'not allowed'},confirmed:true});assert.equal(denied.payload.reasonCode,'OPERATION_NOT_ALLOWED');
   const world = await invoke('queries',{operation:'world.snapshot',arguments:{worldId}}); assert.equal(world.state,'SUCCEEDED'); assert.ok(world.payload.time>=6000 && world.payload.time<6200); findings.push('Signed API query and world.time mutation completed by real Paper; result verified by readback.');
+  const panel=new WebSocket(url.replace(/^http/,'ws')+'/api/v1/panel',{headers:{Origin:'http://127.0.0.1:3199',Cookie:cookie}});const packets=[];
+  panel.on('message',data=>packets.push(JSON.parse(data.toString())));await new Promise((resolve,reject)=>{panel.once('open',resolve);panel.once('error',reject);});
+  const pushed=async predicate=>{const until=Date.now()+10000;while(Date.now()<until){const index=packets.findIndex(predicate);if(index>=0)return packets.splice(index,1)[0];await new Promise(r=>setTimeout(r,20));}throw new Error('Native WebSocket push not received');};
+  try{
+    const readCount=await platform.db.one("SELECT count(*)::int AS n FROM vos_actions WHERE kind='query'");
+    panel.send(JSON.stringify({type:'subscribe',id:1,serverId,section:'explorer',query:{operation:'world.snapshot',arguments:{worldId}}}));
+    await pushed(v=>v.type==='snapshot');const first=await pushed(v=>v.type==='query');assert.equal(first.result.state,'SUCCEEDED');
+    const batchesBefore=httpResults.get('/api/v1/agents/telemetry/batches 202')??0;
+    paper.stdin.write('time set 9000\n');const changed=await pushed(v=>v.type==='query'&&v.result.payload?.time>=9000&&v.result.payload.time<9300);assert.equal(changed.result.state,'SUCCEEDED');
+    await new Promise(r=>setTimeout(r,1300));assert.equal((await platform.db.one("SELECT count(*)::int AS n FROM vos_actions WHERE kind='query'")).n,readCount.n);
+    assert.equal(httpResults.get('/api/v1/agents/telemetry/batches 202')??0,batchesBefore,'Streaming agent must not keep posting HTTP batches');
+    findings.push('Native signed subscription pushed in-game world time changes over WebSocket; no repeated queries or HTTP telemetry batches.');
+  }finally{panel.close();}
   const persisted = await platform.db.one('SELECT count(*)::int AS n FROM vos_audit WHERE server_id=$1',[serverId]); assert.ok(persisted.n>=6); findings.push('Scoped execution and audit history persisted.');
   await platform.db.rows('UPDATE vos_servers SET player_login=true WHERE id=$1',[serverId]);
   assert.equal((await call('auth/player/login',{serverId,nickname:'OfflineTest',password:'wrong-password'})).status,401);

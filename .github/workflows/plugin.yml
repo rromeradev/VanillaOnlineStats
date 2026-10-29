@@ -52,22 +52,22 @@ jobs:
         run: >-
           python scripts/smoke_server.py --java "$JAVA_HOME/bin/java"
           --paper .tools/paper.jar --authme .tools/authme.jar
-          --plugin plugin/build/libs/VanillaOnlineStats-0.4.1.jar
+          --plugin plugin/build/libs/VanillaOnlineStats-0.5.0.jar
           --output .tools/smoke --heartbeat --accept-eula
       - name: Release protocol integration (Paper, batches and signed controls)
         run: >-
           python scripts/smoke_release.py --java "$JAVA_HOME/bin/java"
           --paper .tools/paper.jar --authme .tools/authme.jar
-          --plugin plugin/build/libs/VanillaOnlineStats-0.4.1.jar
+          --plugin plugin/build/libs/VanillaOnlineStats-0.5.0.jar
           --output .tools/release-smoke --cache .tools/smoke/with-authme --accept-eula
       - name: Real platform integration (Paper, API, PostgreSQL)
         run: >-
           node scripts/smoke_platform.mjs --java "$JAVA_HOME/bin/java"
           --paper .tools/paper.jar --authme .tools/authme.jar
-          --plugin plugin/build/libs/VanillaOnlineStats-0.4.1.jar
+          --plugin plugin/build/libs/VanillaOnlineStats-0.5.0.jar
           --output .tools/platform-smoke --cache .tools/smoke/with-authme --accept-eula
       - name: Package plugin release
-        run: python scripts/package_plugin.py --version 0.4.1
+        run: python scripts/package_plugin.py --version 0.5.0
       - name: Package platform release
         run: |
           pnpm licenses list --prod --json > .tools/licenses.json
@@ -102,14 +102,14 @@ jobs:
           node scripts/compose-test-env.mjs
           docker compose --env-file .env.ci -p vos-ci config --quiet
           docker compose --env-file .env.ci -p vos-ci up -d --build --wait
-          docker compose --env-file .env.ci -p vos-ci exec -T portal node scripts/check-deployment.mjs
+          docker compose --env-file .env.ci -p vos-ci exec -T portal node scripts/check-deployment.mjs --websocket
       - name: Verify identity survives container recreation
         run: |
           before=$(docker compose --env-file .env.ci -p vos-ci exec -T portal sha256sum /app/state/identity.json)
           docker compose --env-file .env.ci -p vos-ci up -d --no-deps --force-recreate --wait portal
           after=$(docker compose --env-file .env.ci -p vos-ci exec -T portal sha256sum /app/state/identity.json)
           test "$before" = "$after"
-          docker compose --env-file .env.ci -p vos-ci exec -T portal node scripts/check-deployment.mjs
+          docker compose --env-file .env.ci -p vos-ci exec -T portal node scripts/check-deployment.mjs --websocket
       - name: Stop disposable installation
         if: always()
         run: |

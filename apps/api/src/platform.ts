@@ -13,6 +13,7 @@ import { Database, Server, Session } from './database';
 import { PlatformConfig } from './platform-config';
 import { seedDemo } from './demo';
 import { Visuals } from './visuals';
+import {PanelStream,PanelView} from './panel-stream';
 import { ACTIONS, QUERIES, Control, argumentsFor } from './control';
 import { UUID, Limits, canonical, csrf, fail, fields, id, opaque, passwordHash, passwordMatches, same, sha, text } from './security';
 
@@ -62,7 +63,6 @@ export async function createPlatform(config: PlatformConfig) {
     return { kind, displayName: display, serverId: server?.id, csrf: csrf(token, config.sessionSecret), expiresAt: expires };
   }
   function since(value: any) { const hours = Number(value ?? 24); if (![1,6,24,168].includes(hours)) fail(400); return new Date(Date.now() - hours * 3600_000); }
-  function queryArguments(value: string | undefined) { try { return JSON.parse(value == null ? '{}' : text(value,4096)); } catch { fail(400); } }
   function secrets(value: any, depth = 0): boolean {
     if (depth > 16) return true;
     if (Array.isArray(value)) return value.length > 1024 || value.some(v => secrets(v, depth + 1));
@@ -78,29 +78,62 @@ export async function createPlatform(config: PlatformConfig) {
     if (['players.snapshot','players.live.snapshot','worlds.snapshot'].includes(entry.type) && (!Array.isArray(entry.payload.items) || entry.payload.items.length > 256)) fail(400);
   }
   const bearer = (authorization: string | undefined) => /^Bearer ([A-Za-z0-9_-]{43,128})$/.exec(authorization ?? '')?.[1];
-  const streams = new Map<string, number>(); const stopStreams = new Set<() => void>();
   async function scopedPlayer(req: Request, serverId: string) { const actor = await session(req); if (actor.kind !== 'PLAYER' || actor.server_id !== serverId) fail(403); return { actor, server: await db.server(serverId) }; }
   const sanitizePlayer = (value: any) => { if (!value || typeof value !== 'object') return value; const result = structuredClone(value); delete result.address; delete result.permissions; return result; };
+  const eventFields=['durationSeconds','reason','Cause','Reason','Amount','Damage','FinalDamage','ExpToDrop','NewLevel','OldLevel','PreviousValue','NewValue','Statistic','advancement','root'];
+  const technical=(type:string)=>type.endsWith('.snapshot')||['server.heartbeat','events.counters','chunks.sample','host.filesystem','integrations.status'].includes(type);
+  const safeEvent=(entry:any)=>({...entry,payload:Object.fromEntries(Object.entries(entry.payload).filter(([key])=>eventFields.includes(key)))});
+  async function selfData(actor:Session,server:Server){
+    const [profiles,skins,events]=await Promise.all([db.latest(server,'player',actor.actor_id),db.latest(server,'skin',actor.actor_id),db.history(server,null,new Date(Date.now()-7*86400_000),200,actor.actor_id,true)]);
+    const observed=profiles[0]?.payload.skin,skin=skins[0]&&(!observed?.textureHash||skins[0].occurredAt>profiles[0].occurredAt)?skins[0].payload:observed;
+    return {server:safeServer(server),skin,profile:profiles[0]?{...profiles[0],payload:sanitizePlayer(profiles[0].payload)}:null,events:events.map(safeEvent)};
+  }
+  async function panelView(actor:Session,value:any):Promise<PanelView>{
+    fields(value,['type','id','serverId','section','hours','query']);if(value.type!=='subscribe'||!Number.isSafeInteger(value.id)||value.id<1)fail(400);
+    const section=text(value.section,32),sid=id(value.serverId),hours=Number(value.hours??24);since(hours);
+    const allowed=actor.kind==='PLAYER'?['overview','journey','inventory','statistics','advancements','privacy']:['overview','players','worlds','events','explorer','controls','audit','settings'];if(!allowed.includes(section))fail(403);
+    const server=actor.kind==='PLAYER'?(actor.server_id===sid?await db.server(sid):fail(403)):await db.admin(actor,sid);
+    if(actor.kind==='PLAYER'&&actor.tenant_id!==server.tenant_id)fail(403);
+    let query:PanelView['query'];
+    if(value.query){fields(value.query,['operation','arguments']);const operation=text(value.query.operation,64);if(!QUERIES.includes(operation as any))fail(400);let args=value.query.arguments??{};
+      if(actor.kind==='PLAYER'){const own:Record<string,string>={overview:'player.snapshot',inventory:'player.inventory',statistics:'player.statistics',advancements:'player.advancements'};if(own[section]!==operation)fail(403);fields(args,['offset','statistic','material','entityType']);args={...args,playerId:actor.actor_id};}
+      else if(section!=='explorer')fail(400);
+      query={operation,args:argumentsFor(operation,args,'query')};
+    }
+    return {id:value.id,actor,server,section,hours,query};
+  }
+  async function panelSnapshot(view:PanelView){
+    const {actor,server,section,hours}=view;const data:any={server:safeServer(server)};
+    if(actor.kind==='PLAYER'){data.self=await selfData(actor,server);return data;}
+    data.overview={server:data.server,snapshots:await db.latest(server),alerts:await db.rows('SELECT rule,active,value,acknowledged_by,first_seen,last_seen FROM vos_alerts WHERE tenant_id=$1 AND server_id=$2 ORDER BY active DESC,rule',[server.tenant_id,server.id])};
+    if(['overview','events','players','controls','explorer'].includes(section))data.players=await db.latest(server,'player');
+    if(['worlds','controls','explorer'].includes(section))data.worlds=await db.latest(server,'world');
+    if(section==='overview'){data.metrics=await db.history(server,'server.performance.snapshot',since(hours),1000);data.events=await db.history(server,null,since(1),500,null,true);}
+    if(section==='events')data.events=await db.history(server,null,since(hours),500,null,true);
+    if(['controls','explorer'].includes(section))data.catalog={queries:QUERIES,actions:ACTIONS,capabilities:server.capabilities,role:server.role};
+    if(section==='controls')data.actions=await db.rows('SELECT id,operation,kind,risk,state,created_at,expires_at FROM vos_actions WHERE tenant_id=$1 AND server_id=$2 ORDER BY created_at DESC LIMIT 100',[server.tenant_id,server.id]);
+    if(section==='audit')data.audit=await db.rows('SELECT id,actor_id,operation,outcome,correlation_id,created_at FROM vos_audit WHERE tenant_id=$1 AND server_id=$2 ORDER BY created_at DESC LIMIT 200',[server.tenant_id,server.id]);
+    if(section==='settings'){
+      data.settings={...data.server,publicKey:control.publicKey,apiOrigin:config.origin,heartbeat:config.origin+'/api/v1/agents/heartbeat',telemetry:config.origin+'/api/v1/agents/telemetry/batches',control:config.origin.replace(/^http/,'ws')+'/api/v1/agents/control'};
+      data.privacyRequests=await db.rows('SELECT id,player_id,kind,state,created_at FROM vos_privacy_requests WHERE tenant_id=$1 AND server_id=$2 ORDER BY created_at DESC LIMIT 100',[server.tenant_id,server.id]);
+      if(server.role==='OWNER')data.members=await db.rows('SELECT a.id,a.email,m.role FROM vos_server_members m JOIN vos_accounts a ON a.id=m.account_id WHERE m.tenant_id=$1 AND m.server_id=$2',[server.tenant_id,server.id]);
+    }return data;
+  }
+  function panelDelta(view:PanelView,messages:any[]){
+    if(view.actor.kind==='ADMIN')return messages.map(entry=>({type:'telemetry',entry}));
+    const packets:any[]=[];for(const entry of messages){
+      if(['players.snapshot','players.live.snapshot'].includes(entry.type)){const item=entry.payload.items?.find((p:any)=>p.uuid===view.actor.actor_id);if(item)packets.push({type:'player',profile:{id:item.uuid,occurredAt:entry.occurredAt,payload:sanitizePlayer(item)}});}
+      else if(entry.payload.uuid===view.actor.actor_id&&!technical(entry.type))packets.push({type:'event',entry:safeEvent({id:entry.messageId,type:entry.type,occurredAt:entry.occurredAt,payload:entry.payload})});
+    }return packets;
+  }
 
   @Controller('api/v1')
   class PlatformController {
     @Get('visuals/icon/:registryId') async icon(@Param('registryId') registryId:string,@Query('angle') angle:string,@Res() res:Response){const asset=await visuals.image(registryId,angle);res.type(asset.type).setHeader('Cache-Control','public, max-age=86400');res.send(asset.bytes);}
     @Get('visuals/skin/:hash') async skin(@Param('hash') hash:string,@Res() res:Response){const asset=await visuals.skin(hash);res.type(asset.type).setHeader('Cache-Control','public, max-age=86400');res.send(asset.bytes);}
     @Get('visuals/item/:registryId') async item(@Req() req:Request,@Param('registryId') registryId:string){await session(req);return visuals.item(registryId);}
-    @Get('servers/:serverId/stream') async stream(@Req() req: Request, @Res() res: Response, @Param('serverId') serverId: string) {
-      const sid=id(serverId), actor=await session(req);
-      const authorize=async()=>{ const current=await session(req); if(current.kind==='PLAYER'){if(current.server_id!==sid)fail(403);}else await db.admin(current,sid); };
-      await authorize(); const key=actor.token_hash;
-      if((streams.get(key)??0)>=4)fail(429); streams.set(key,(streams.get(key)??0)+1);
-      res.setHeader('Content-Type','text/event-stream'); res.setHeader('Cache-Control','no-cache, no-transform'); res.setHeader('X-Accel-Buffering','no'); res.flushHeaders();
-      let stopped=false, checking=false;
-      const send=()=>{if(!stopped){if(res.destroyed||res.writableEnded||res.writableLength>65536){stop();return;}try{res.write('event: update\ndata: {}\n\n');}catch{stop();}}};
-      const timer=setInterval(()=>{if(checking||stopped)return;checking=true;void authorize().then(()=>{if(!stopped)res.write(': keepalive\n\n');}).catch(()=>{if(!stopped)res.write('event: expired\ndata: {}\n\n');stop();}).finally(()=>checking=false);},15000);timer.unref();
-      const stop=()=>{if(stopped)return;stopped=true;clearInterval(timer);db.changes.off(sid,send);streams.set(key,Math.max(0,(streams.get(key)??1)-1));if(!streams.get(key))streams.delete(key);stopStreams.delete(stop);res.end();};
-      db.changes.on(sid,send);stopStreams.add(stop);res.on('close',stop);res.on('error',stop);send();
-    }
     @Get('health') health() { return { status: 'ok' }; }
-    @Get('public/info') info() { return { name: 'VanillaOnlineStats', version: '0.5.1', demo: config.demo === true, playerLogin: 'authme-password', source: 'https://github.com/rromeradev/VanillaOnlineStats' }; }
+    @Get('public/info') info() { return { name: 'VanillaOnlineStats', version: '0.6.0', demo: config.demo === true, playerLogin: 'authme-password', source: 'https://github.com/rromeradev/VanillaOnlineStats' }; }
     @Get('public/servers') async publicServers() { return db.rows('SELECT id,name FROM vos_servers WHERE player_login=true ORDER BY name LIMIT 100'); }
     @Post('agents/heartbeat') @HttpCode(202)
     async heartbeat(@Headers('authorization') header: string, @Body() body: any) {
@@ -203,11 +236,6 @@ export async function createPlatform(config: PlatformConfig) {
     @Get('servers/:serverId/catalog') async catalog(@Req() req: Request, @Param('serverId') serverId: string) {
       const actor = await session(req), server = await db.admin(actor, id(serverId)); return { queries: QUERIES, actions: ACTIONS, capabilities: server.capabilities, role: server.role };
     }
-    @Get('servers/:serverId/live') async liveQuery(@Req() req:Request,@Param('serverId') serverId:string,@Query('operation') operation:string,@Query('arguments') raw:string) {
-      const actor=await session(req),server=await db.admin(actor,id(serverId));
-      if(!QUERIES.includes(operation as any))fail(400);
-      return control.observe(server,{...actor,role:server.role},operation,argumentsFor(operation,queryArguments(raw),'query'));
-    }
     @Post('servers/:serverId/queries') @HttpCode(200)
     async query(@Req() req: Request, @Param('serverId') serverId: string, @Body() body: any) {
       const actor = await mutation(req), server = await db.admin(actor, id(serverId)); fields(body, ['operation','arguments']);
@@ -286,14 +314,6 @@ export async function createPlatform(config: PlatformConfig) {
       const effective=skin[0]&&(!observed?.textureHash||skin[0].occurredAt>profiles[0].occurredAt)?skin[0].payload:observed;
       return { server: safeServer(server), skin:effective, profile: profiles[0] ? { ...profiles[0], payload: sanitizePlayer(profiles[0].payload) } : null, events: safeEvents };
     }
-    @Get('me/servers/:serverId/live') async livePlayerQuery(@Req() req:Request,@Param('serverId') serverId:string,@Query('operation') operation:string,@Query('arguments') raw:string) {
-      const {actor,server}=await scopedPlayer(req,id(serverId));
-      if(!['player.snapshot','player.inventory','player.statistics','player.advancements'].includes(operation))fail(403);
-      if(!server.capabilities?.playerQueries)fail(409);
-      const args=queryArguments(raw);fields(args,['offset','statistic','material','entityType']);
-      const result=await control.observe(server,actor,operation,argumentsFor(operation,{...args,playerId:actor.actor_id},'query'));
-      if(result.payload)result.payload=sanitizePlayer(result.payload);return result;
-    }
     @Post('me/servers/:serverId/queries') @HttpCode(200)
     async playerQuery(@Req() req: Request, @Param('serverId') serverId: string, @Body() body: any) {
       await mutation(req); const { actor, server } = await scopedPlayer(req, id(serverId)); fields(body, ['operation','arguments']);
@@ -305,7 +325,7 @@ export async function createPlatform(config: PlatformConfig) {
     }
     @Post('me/servers/:serverId/privacy-requests') async privacy(@Req() req: Request, @Param('serverId') serverId: string, @Body() body: any) {
       await mutation(req); const { actor, server } = await scopedPlayer(req, id(serverId)); fields(body, ['kind']); if (!['DELETE','EXPORT'].includes(body.kind)) fail(400);
-      await db.rows('INSERT INTO vos_privacy_requests(id,tenant_id,server_id,player_id,kind) VALUES($1,$2,$3,$4,$5)', [randomUUID(), server.tenant_id, server.id, actor.actor_id, body.kind]); return { ok: true };
+      await db.rows('INSERT INTO vos_privacy_requests(id,tenant_id,server_id,player_id,kind) VALUES($1,$2,$3,$4,$5)', [randomUUID(), server.tenant_id, server.id, actor.actor_id, body.kind]);db.notify(server.id); return { ok: true };
     }
     @Get('servers/:serverId/privacy-requests') async privacyRequests(@Req() req: Request, @Param('serverId') serverId: string) { const actor = await session(req), server = await db.admin(actor, id(serverId)); return db.rows('SELECT id,player_id,kind,state,created_at FROM vos_privacy_requests WHERE tenant_id=$1 AND server_id=$2 ORDER BY created_at DESC LIMIT 100', [server.tenant_id, server.id]); }
   }
@@ -334,10 +354,14 @@ export async function createPlatform(config: PlatformConfig) {
     app.use((req: Request, res: Response, next: () => void) => { if (req.method === 'GET' && !req.path.startsWith('/api') && !req.path.includes('.')) res.sendFile(resolve(web, 'index.html')); else next(); });
   }
   const server = app.getHttpServer(); server.requestTimeout = 35_000; server.headersTimeout = 10_000; server.maxConnections = 128;
-  control = new Control(db, config.privateKey, server);
+  control = new Control(db, config.privateKey, server,async(agent,messages)=>{for(const entry of messages){limits.check('messages:'+agent.id,6000);validateMessage(entry,agent);}return (await db.ingest(agent,messages)).ids;});
+  const panel=new PanelStream(server,db,control,config.origin,req=>session(req as Request),panelView,async(req,view)=>{
+    const actor=await session(req as Request);if(actor.kind!==view.actor.kind)fail(403);
+    if(actor.kind==='PLAYER'){if(actor.server_id!==view.server.id)fail(403);view.server=await db.server(view.server.id);}else view.server=await db.admin(actor,view.server.id);view.actor=actor;
+  },panelSnapshot,panelDelta);
   const cleanup = setInterval(() => { void db.cleanup().catch(() => {}); }, 60_000); cleanup.unref();
   await db.cleanup();
   const close = app.close.bind(app);
-  app.close = async () => { clearInterval(cleanup); for(const stop of stopStreams)stop(); await control.close(); await close(); await db.close(); };
+  app.close = async () => { clearInterval(cleanup); await panel.close(); await control.close(); await close(); await db.close(); };
   return { app, db, control };
 }

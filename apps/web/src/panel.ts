@@ -5,7 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { Api, Theme } from './api';
 import { Chart } from './chart';
-import { LiveReader } from './live-reader';
+import { PanelSocket } from './panel-socket';
 import { ItemVisual, ItemCatalog, PlayerHead, PlayerModel, registryId, visualIds } from './visuals';
 
 const labels: Record<string, string> = {
@@ -27,7 +27,7 @@ const fieldLabels: Record<string, string> = { playerId: 'UUID do jogador', world
 <nav aria-label="Menu principal">@for(item of navigation(); track item.id) {<a [routerLink]="prefix() + '/' + item.id" routerLinkActive="active" (click)="navOpen.set(false)"><span class="nav-symbol">{{item.icon}}</span>{{name(item.id)}}@if(item.id === 'events' && activeAlerts().length){<span class="nav-count">{{activeAlerts().length}}</span>}</a>}</nav>
 <div class="side-bottom"><div class="side-help"><span>◈</span><strong>Um mundo de possibilidades.</strong><p>Seus dados. Sua comunidade.<br>Sua infraestrutura.</p></div>
 <div class="theme-switch" aria-label="Aparência">@for(item of themes; track item.id){<button [class.selected]="theme.choice() === item.id" (click)="theme.set(item.id)" [attr.aria-label]="item.label" [attr.title]="item.label">{{item.icon}}</button>}</div>
-<a class="source-link" href="https://github.com/rromeradev/VanillaOnlineStats" target="_blank" rel="noopener">Código-fonte ↗ <span>v0.5.1</span></a></div></aside>
+<a class="source-link" href="https://github.com/rromeradev/VanillaOnlineStats" target="_blank" rel="noopener">Código-fonte ↗ <span>v0.6.0</span></a></div></aside>
 <div class="workspace-main"><header class="topbar"><div class="breadcrumb"><button class="icon-button mobile-menu" (click)="navOpen.set(!navOpen())" aria-label="Abrir navegação">☰</button><span>{{isPlayer() ? 'Área Player' : 'Administração'}}</span><span class="crumb-slash">/</span><strong>{{name(section())}}</strong></div>
 <div class="topbar-actions"><span class="refresh-status"><i class="live-dot" [class.offline]="!selected()?.online"></i>{{selected()?.online ? 'Servidor online' : 'Sem sinal recente'}}</span><button class="avatar-button" (click)="open('account')" [attr.aria-label]="'Conta de ' + api.identity()?.displayName">@if(isPlayer()){<vos-head [skin]="self()?.skin" [name]="api.identity()?.displayName || ''"/>}@else{ {{initials()}} }</button></div></header>
 <main id="main-content"><div class="page-heading"><div><div class="eyebrow">{{isPlayer() ? 'SUA JORNADA SURVIVAL' : 'OBSERVABILIDADE & COMUNIDADE'}}</div><h1>{{headline()}}</h1><p>{{subtitle()}}</p></div><div class="heading-actions">@if(!isPlayer() && selected()){<select aria-label="Servidor selecionado" [ngModel]="serverId()" (ngModelChange)="selectServer($event)">@for(server of servers(); track server.id){<option [value]="server.id">{{server.name}}</option>}</select>}<span class="pill" role="status">{{streamState()}} · atualização automática</span></div></div>
@@ -99,67 +99,62 @@ export class Panel implements OnDestroy {
   hoursOptions = [1,6,24,168]; search = ''; queryOperation = 'server.performance'; queryArgs: Record<string,any> = {}; actionOperation = 'world.time'; actionArgs: Record<string,any> = {}; confirmed = false; reauthPassword = ''; oneTimeToken = ''; newServerId = ''; newServerName = ''; serverName = ''; playerLogin = false; memberEmail = ''; memberPassword = '';
   itemCatalog = inject(ItemCatalog); visualIds = visualIds; itemDetails = signal<any>(null); itemAngle = signal('iso');
   currentPassword = ''; newPassword = '';
-  streamState=signal('Conectando'); queryError=signal(''); pageOffset=0; private reader=new LiveReader(); private autoKey=''; private destroyed=false;
-  private visibility=()=>{if(!document.hidden){this.reader.reset();void this.refresh(true);this.automaticQuery();}};
-  private stream?: EventSource; private pendingRefresh?: ReturnType<typeof setTimeout>; private dirty = false;
-  private timer: ReturnType<typeof setInterval>; private subscription; private initialized = false; private initializing=false; private initializeAfter=0; private initializeFailures=0; private loadEpoch = 0;
-  constructor() {
-    this.subscription = this.route.paramMap.subscribe(params => { this.section.set(params.get('section') ?? 'overview'); this.search = ''; this.pageOffset=0; this.reader.reset();this.autoKey='';this.queryError.set('');this.result.set(null); if (this.initialized) { this.loadEpoch++; this.loading.set(false); void this.refresh(); } });
-    void this.initialize(); document.addEventListener('visibilitychange',this.visibility); this.timer=setInterval(()=>{if(document.hidden)return;if(!this.initialized||!this.serverId()){void this.initialize();return;}if(!this.loading() && Date.now()-Date.parse(this.lastRefresh()||'1970-01-01')>=2000)void this.refresh(true);this.automaticQuery();},1000);
+  streamState=signal('Conectando');queryError=signal('');pageOffset=0;private stream?:PanelSocket;private destroyed=false;
+  private visibility=()=>{if(document.hidden)this.stream?.pause();else this.requestView(true);};
+  private retry?:ReturnType<typeof setTimeout>;private queryDelay?:ReturnType<typeof setTimeout>;private subscription;private initialized=false;private initializing=false;private initializeFailures=0;
+  constructor(){
+    this.subscription=this.route.paramMap.subscribe(params=>{this.section.set(params.get('section')??'overview');this.search='';this.pageOffset=0;this.queryError.set('');this.result.set(null);if(this.initialized)this.requestView();});
+    document.addEventListener('visibilitychange',this.visibility);void this.initialize();
   }
-  async initialize() { if(this.initializing||this.destroyed||Date.now()<this.initializeAfter)return;this.initializing=true;try { this.api.info.set(await this.api.request('public/info')); const servers = await this.api.request<any[]>('servers'); this.servers.set(servers); const previous = sessionStorage.getItem('vos_server'); this.serverId.set(servers.some(s => s.id === previous) ? previous! : servers[0]?.id ?? ''); this.initialized = true;this.initializeFailures=0; this.connectStream(); await this.refresh(); } catch(error: any) { this.initializeAfter=Date.now()+Math.min(30000,1000*2**++this.initializeFailures);this.error.set(error.message); if (!this.api.identity()) void this.router.navigateByUrl('/login'); } finally{this.initializing=false;} }
-  ngOnDestroy() { this.destroyed=true;this.reader.reset();document.removeEventListener('visibilitychange',this.visibility);clearInterval(this.timer); this.stream?.close(); clearTimeout(this.pendingRefresh); this.subscription.unsubscribe(); this.oneTimeToken = ''; this.reauthPassword = ''; }
+  async initialize(){
+    if(this.initializing||this.destroyed)return;this.initializing=true;
+    try{this.api.info.set(await this.api.request('public/info'));const servers=await this.api.request<any[]>('servers');if(this.destroyed)return;this.servers.set(servers);const previous=sessionStorage.getItem('vos_server');this.serverId.set(servers.some(s=>s.id===previous)?previous!:servers[0]?.id??'');this.initialized=true;this.initializeFailures=0;this.connectStream();this.requestView();}
+    catch(error:any){this.error.set(error.message);if(!this.api.identity())void this.router.navigateByUrl('/login');else this.retry=setTimeout(()=>void this.initialize(),Math.min(30000,1000*2**++this.initializeFailures));}
+    finally{this.initializing=false;}
+  }
+  ngOnDestroy(){this.destroyed=true;this.stream?.close();clearTimeout(this.retry);clearTimeout(this.queryDelay);document.removeEventListener('visibilitychange',this.visibility);this.subscription.unsubscribe();this.oneTimeToken='';this.reauthPassword='';}
   name(value: string) { return labels[value] ?? value; }
   headline() { return this.section() === 'overview' ? this.isPlayer() ? 'Toda jornada merece ser lembrada.' : 'Seu mundo, em perspectiva.' : this.name(this.section()); }
   subtitle() { return this.section() === 'overview' ? this.isPlayer() ? 'Acompanhe sua história no Survival, com seus dados em um só lugar.' : 'Acompanhe o desempenho, os jogadores e os acontecimentos do seu servidor.' : this.isPlayer() ? 'Informações privadas vinculadas à sua identidade no jogo.' : 'Informações e operações do servidor selecionado.'; }
-  async selectServer(value: string) { this.reader.reset();this.autoKey='';this.pageOffset=0;this.queryError.set('');this.loadEpoch++; this.loading.set(false); this.serverId.set(value); sessionStorage.setItem('vos_server',value); this.overview.set(null); this.self.set(null); this.result.set(null); this.players.set([]); this.worlds.set([]); this.events.set([]); this.metrics.set([]); this.actions.set([]); this.audit.set([]); this.catalog.set(null); this.settings.set(null); this.connectStream(); await this.refresh(); }
-  async refresh(quiet = false) {
-    if (!this.serverId() || this.loading()) return; const epoch = ++this.loadEpoch; this.loading.set(true); if(!quiet) this.error.set('');
-    try {
-      const id = this.serverId(), base = 'servers/' + id, section = this.section();
-      if (this.isPlayer()) { const self = await this.api.request('me/servers/' + id); if(epoch !== this.loadEpoch) return; this.self.set(self); if(!this.selected()?.controlConnected&&self.server.controlConnected)this.reader.reset();this.servers.update(values=>values.map(v=>v.id===id?self.server:v)); }
-      else {
-        const overview = await this.api.request(base + '/overview'); if(epoch !== this.loadEpoch) return; this.overview.set(overview);if(!this.selected()?.controlConnected&&overview.server.controlConnected)this.reader.reset();this.servers.update(values => values.map(s => s.id === id ? overview.server : s));
-        const jobs: Promise<any>[] = [];
-        if(section === 'overview') { jobs.push(this.api.request<any[]>(base + '/metrics?hours=' + this.hours()).then(v => { if(epoch === this.loadEpoch) this.metrics.set(v); })); jobs.push(this.api.request<any[]>(base + '/events?hours=1').then(v => { if(epoch === this.loadEpoch) this.events.set(v); })); }
-        if(['overview','events','players','controls','explorer'].includes(section)) jobs.push(this.api.request<any[]>(base + '/players').then(v => { if(epoch === this.loadEpoch) this.players.set(v); }));
-        if(['worlds','controls','explorer'].includes(section)) jobs.push(this.api.request<any[]>(base + '/worlds').then(v => { if(epoch === this.loadEpoch) this.worlds.set(v); }));
-        if(section === 'events') jobs.push(this.api.request<any[]>(base + '/events?hours=' + this.hours()).then(v => { if(epoch === this.loadEpoch) this.events.set(v); }));
-        if(['controls','explorer'].includes(section)) jobs.push(this.api.request(base + '/catalog').then(v => { if(epoch === this.loadEpoch) this.catalog.set(v); }));
-        if(section === 'controls') jobs.push(this.api.request<any[]>(base + '/actions').then(v => { if(epoch === this.loadEpoch) this.actions.set(v); }));
-        if(section === 'audit') jobs.push(this.api.request<any[]>(base + '/audit').then(v => { if(epoch === this.loadEpoch) this.audit.set(v); }));
-        if(section === 'settings') { jobs.push(this.api.request(base + '/settings').then((v: any) => { if(epoch !== this.loadEpoch) return; this.settings.set(v); if(!quiet){this.serverName = v.name; this.playerLogin = v.playerLogin;} })); jobs.push(this.api.request<any[]>(base + '/privacy-requests').then(v => { if(epoch === this.loadEpoch) this.privacyRequests.set(v); })); if(overview.server.role === 'OWNER') jobs.push(this.api.request<any[]>(base + '/members').then(v => { if(epoch === this.loadEpoch) this.members.set(v); })); }
-        await Promise.all(jobs);
-      }
-      if(epoch === this.loadEpoch) { this.lastRefresh.set(new Date().toISOString()); this.error.set('');this.automaticQuery(); }
-    } catch(error: any) { if(epoch === this.loadEpoch) this.error.set(error.message); if(!this.api.identity()) void this.router.navigateByUrl('/login'); } finally { if(epoch === this.loadEpoch) this.loading.set(false); }
+  async selectServer(value:string){this.serverId.set(value);sessionStorage.setItem('vos_server',value);this.pageOffset=0;this.overview.set(null);this.self.set(null);this.result.set(null);this.players.set([]);this.worlds.set([]);this.events.set([]);this.metrics.set([]);this.actions.set([]);this.audit.set([]);this.catalog.set(null);this.settings.set(null);this.queryError.set('');this.requestView(true);}
+  async refresh(_quiet=false){this.requestView(true);}
+  private connectStream(){if(this.stream)return;this.stream=new PanelSocket(value=>this.packet(value),state=>{if(!this.destroyed)this.streamState.set(state);},code=>{this.loading.set(false);if(code===4401){this.api.identity.set(null);void this.router.navigateByUrl('/login');}else{this.error.set('Seu acesso a este servidor foi revogado.');this.overview.set(null);this.self.set(null);this.result.set(null);}});}
+  queryChanged(){this.result.set(null);this.queryError.set('');clearTimeout(this.queryDelay);this.queryDelay=setTimeout(()=>this.requestView(),250);}
+  queryHint(){return this.queryFields().some(field=>!['offset','statistic','material','entityType'].includes(field)&&(this.queryArgs[field]==null||this.queryArgs[field]===''||field.endsWith('Id')&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(this.queryArgs[field]))))?'Preencha o alvo para acompanhar a consulta automaticamente.':'Mudanças recebidas pela assinatura WebSocket.';}
+  private requestView(force=false){
+    if(this.destroyed||!this.initialized||!this.serverId()||document.hidden)return;this.connectStream();
+    const own:Record<string,string>={overview:'player.snapshot',inventory:'player.inventory',statistics:'player.statistics',advancements:'player.advancements'};
+    const operation=this.isPlayer()?own[this.section()]:this.section()==='explorer'&&!this.queryHint().startsWith('Preencha')?this.queryOperation:null;
+    const query=operation?{operation,arguments:this.isPlayer()?(this.pageOffset?{offset:this.pageOffset}:{}):this.parameters(this.queryArgs,operation)}:null;
+    this.error.set('');if(this.stream!.subscribe({serverId:this.serverId(),section:this.section(),hours:this.hours(),...(query?{query}:{})},force))this.loading.set(true);
   }
-  private connectStream() {
-    this.stream?.close(); clearTimeout(this.pendingRefresh); this.dirty=false;
-    if(!this.serverId())return;
-    this.streamState.set('Conectando');this.stream=new EventSource('/api/v1/servers/'+this.serverId()+'/stream');
-    this.stream.addEventListener('open',()=>this.streamState.set('Ao vivo'));this.stream.addEventListener('error',()=>this.streamState.set('Reconectando'));
-    this.stream.addEventListener('update',()=>{this.dirty=true;this.scheduleUpdate();});
-    this.stream.addEventListener('expired',()=>{this.stream?.close();void this.api.me().then(()=>this.router.navigateByUrl('/login'));});
+  private rows(current:any[],incoming:any[],limit=500){const values=new Map(current.map(row=>[row.id,row]));for(const row of incoming){const previous=values.get(row.id);if(!previous||Date.parse(row.occurredAt)>=Date.parse(previous.occurredAt))values.set(row.id,row);}return [...values.values()].sort((a,b)=>Date.parse(a.occurredAt)-Date.parse(b.occurredAt)).slice(-limit);}
+  private packet(value:any){
+    if(this.destroyed)return;
+    if(value.type==='error'){this.error.set(value.message);this.loading.set(false);return;}
+    if(value.type==='server'){this.updateServer({...this.selected(),...value.server});return;}
+    if(value.type==='alerts'){this.overview.update(current=>current?{...current,alerts:value.items}:current);return;}
+    if(value.type==='query'){if(this.isPlayer()&&this.section()==='overview'&&value.result.state==='SUCCEEDED'){const profile={id:value.result.payload.uuid,occurredAt:value.result.observedAt??value.result.receivedAt,payload:value.result.payload};this.self.update(current=>current?{...current,profile,skin:profile.payload.skin?.textureHash?profile.payload.skin:current.skin}:current);}this.result.set(value.result);this.queryError.set(value.result.state==='SUCCEEDED'?'':this.controlReason(value.result));this.lastRefresh.set(new Date().toISOString());return;}
+    if(value.type==='snapshot'){
+      const data=value.data;this.updateServer(data.server);if(data.overview)this.overview.set(data.overview);if(data.self)this.self.set(data.self);
+      for(const key of ['players','worlds','events','metrics','actions','audit','catalog','members','privacyRequests']as const)if(data[key]!==undefined)this[key].set(data[key]);
+      if(data.settings){const first=!this.settings();this.settings.set(data.settings);if(first){this.serverName=data.settings.name;this.playerLogin=data.settings.playerLogin;}}
+      this.loading.set(false);this.error.set('');this.lastRefresh.set(new Date().toISOString());return;
+    }
+    if(value.type==='player'){this.self.update(current=>current&&(!current.profile||Date.parse(value.profile.occurredAt)>=Date.parse(current.profile.occurredAt))?{...current,profile:value.profile,skin:value.profile.payload.skin?.textureHash?value.profile.payload.skin:current.skin}:current);}
+    if(value.type==='event'){this.self.update(current=>current?{...current,events:this.rows(current.events??[],[value.entry],200)}:current);}
+    if(value.type==='telemetry'){
+      const e=value.entry,row={id:e.messageId,type:e.type,occurredAt:e.occurredAt,payload:e.payload};
+      const technical=e.type.endsWith('.snapshot')||['server.heartbeat','events.counters','chunks.sample','host.filesystem','integrations.status'].includes(e.type);
+      if(technical)this.overview.update(current=>current?{...current,snapshots:this.rows(current.snapshots??[],[{id:e.type,occurredAt:e.occurredAt,payload:e.payload}],32)}:current);
+      if(e.type.startsWith('players.')&&e.type.endsWith('.snapshot'))this.players.update(current=>this.rows(current,(e.payload.items??[]).map((p:any)=>({id:p.uuid,occurredAt:e.occurredAt,payload:p}))));
+      if(e.type==='worlds.snapshot')this.worlds.update(current=>this.rows(current,(e.payload.items??[]).map((w:any)=>({id:w.worldId,occurredAt:e.occurredAt,payload:w}))));
+      if(e.type==='server.performance.snapshot'&&this.section()==='overview')this.metrics.update(current=>this.rows(current,[row],1000));
+      if(!technical)this.events.update(current=>this.rows(current,[row]).filter(item=>Date.parse(item.occurredAt)>=Date.now()-(this.section()==='overview'?1:this.hours())*3600000));
+    }
+    this.lastRefresh.set(new Date().toISOString());
   }
-  private scheduleUpdate() {
-    if(this.pendingRefresh)return;
-    this.pendingRefresh=setTimeout(()=>{this.pendingRefresh=undefined;if(!this.dirty)return;if(document.hidden)return;if(this.loading()){this.scheduleUpdate();return;}this.dirty=false;void this.refresh(true);},350);
-  }
-  queryChanged() { this.reader.reset();this.autoKey='';this.result.set(null);this.queryError.set(''); }
-  queryHint() { return this.queryFields().some(field=>!['offset','statistic','material','entityType'].includes(field)&&(this.queryArgs[field]==null||this.queryArgs[field]===''||field.endsWith('Id')&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(this.queryArgs[field])))) ? 'Preencha o alvo para acompanhar a consulta automaticamente.' : 'Consulta acompanhada automaticamente enquanto esta tela está aberta.'; }
-  private automaticQuery() {
-    if(this.destroyed || document.hidden || !this.initialized || !this.serverId())return;
-    const own:Record<string,string>={inventory:'player.inventory',statistics:'player.statistics',advancements:'player.advancements'};
-    const operation=this.isPlayer()?own[this.section()]:this.section()==='explorer'?this.queryOperation:null;
-    if(!operation){void this.reader.poll(null,async()=>null,()=>{},()=>{});return;}
-    if(!this.isPlayer()&&this.queryHint().startsWith('Preencha')){this.reader.reset();this.result.set(null);this.queryError.set('');return;}
-    const args=this.isPlayer()?(this.pageOffset?{offset:this.pageOffset}:{}):this.parameters(this.queryArgs,operation);
-    const base=(this.isPlayer()?'me/':'')+'servers/'+this.serverId()+'/live';
-    const path=base+'?operation='+encodeURIComponent(operation)+'&arguments='+encodeURIComponent(JSON.stringify(args));
-    if(this.autoKey!==path){this.autoKey=path;this.result.set(null);this.queryError.set('');}
-    void this.reader.poll(path,()=>this.api.request(path),value=>{if(this.destroyed)return;this.result.set(value);this.queryError.set(value.state==='SUCCEEDED'?'':this.controlReason(value));},error=>{if(!this.destroyed)this.queryError.set(error.message);});
-  }
+  private updateServer(server:any){if(!server?.id)return;this.servers.update(values=>values.map(value=>value.id===server.id?server:value));this.overview.update(value=>value?{...value,server}:value);this.self.update(value=>value?{...value,server}:value);}
   async changeHours(value: number) { this.hours.set(value); await this.refresh(); }
   heapPercent() { return this.perf().heapMax > 0 ? Math.min(100,100*this.perf().heapUsed/this.perf().heapMax) : 0; }
   number(value: any, digits = 0) { return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value.toLocaleString('pt-BR',{ minimumFractionDigits:digits,maximumFractionDigits:digits }) : '—'; }
@@ -182,12 +177,12 @@ export class Panel implements OnDestroy {
   isNumber(field: string, operation: string) { return ['x','y','z','size','offset'].includes(field) || field === 'value' && ['world.time','player.health','player.food','player.level'].includes(operation); }
   choices(operation: string, field: string) { if(field === 'mode') return ['SURVIVAL','CREATIVE','ADVENTURE','SPECTATOR']; if(field === 'value' && operation === 'world.weather') return ['clear','rain','thunder']; if(field === 'value' && operation === 'world.difficulty') return ['PEACEFUL','EASY','NORMAL','HARD']; return []; }
   private parameters(values: Record<string,any>, operation: string) { return Object.fromEntries(Object.entries(values).filter(([,v]) => v !== '' && v != null).map(([key,value]) => [key,this.isNumber(key,operation) ? Number(value) : value])); }
-  async runQuery() { this.reader.reset();this.autoKey='';this.automaticQuery(); }
+  async runQuery(){this.requestView(true);}
   async inspectPlayer(player: any) { this.queryOperation = 'player.snapshot'; this.queryArgs = {playerId:player.id}; await this.router.navigateByUrl(this.prefix()+'/explorer'); await this.runQuery(); }
   async inspectWorld(world: any) { this.queryOperation = 'world.snapshot'; this.queryArgs = {worldId:world.id}; await this.router.navigateByUrl(this.prefix()+'/explorer'); await this.runQuery(); }
   confirmAction() { this.confirmed = false; this.reauthPassword = ''; this.open('action'); }
   async executeAction() { await this.perform(async () => { if(this.catalog()?.actions?.[this.actionOperation]?.risk === 'HIGH') await this.api.post('auth/reauth',{password:this.reauthPassword}); const result = await this.api.post('servers/'+this.serverId()+'/actions',{operation:this.actionOperation,arguments:this.parameters(this.actionArgs,this.actionOperation),confirmed:true}); this.reauthPassword = ''; this.close(); this.showResult(result); await this.refresh(); },true); }
-  async ownQuery(_operation: string, offset = 0) { this.pageOffset=offset;this.reader.reset();this.autoKey='';this.automaticQuery(); }
+  async ownQuery(_operation:string,offset=0){this.pageOffset=offset;this.result.set(null);this.requestView();}
   async ack(rule: string) { await this.perform(async () => { await this.api.post('servers/'+this.serverId()+'/alerts/'+rule+'/ack'); await this.refresh(); }); }
   async saveSettings() { await this.perform(async () => { await this.api.request('servers/'+this.serverId()+'/settings',{method:'PATCH',body:JSON.stringify({name:this.serverName,playerLogin:this.playerLogin})}); this.notice.set('Configuração do portal salva.'); await this.refresh(); }); }
   async addServer() { await this.perform(async () => { const result = await this.api.post('servers',{serverId:this.newServerId.trim(),name:this.newServerName}); this.oneTimeToken = result.agentToken; this.dialogType.set('token'); this.servers.set(await this.api.request('servers')); this.serverId.set(result.serverId);this.connectStream(); this.newServerName = ''; this.newServerId = ''; await this.refresh(); },true); }
@@ -197,7 +192,7 @@ export class Panel implements OnDestroy {
   async removeMember(member: any) { if(!window.confirm('Remover o acesso de '+member.email+' a este servidor?')) return; await this.perform(async () => { await this.api.request('servers/'+this.serverId()+'/members/'+member.id,{method:'DELETE'}); await this.refresh(); }); }
   async privacyRequest(kind: string) { if(kind === 'DELETE' && !window.confirm('Enviar ao administrador uma solicitação de exclusão dos seus dados?')) return; await this.perform(async () => { await this.api.post('me/servers/'+this.serverId()+'/privacy-requests',{kind}); this.notice.set('Solicitação enviada para revisão do administrador.'); }); }
   actionBlockReason() { const policy=this.catalog()?.capabilities?.controls;if(!policy)return 'Atualize o plugin para informar as permissões de controle.';if(!policy.writesEnabled)return 'Escritas desativadas no plugin. Configure control.writes-enabled: true e allowed-operations no config.yml e reinicie o Paper.';if(!policy.allowedOperations?.includes(this.actionOperation))return 'Esta operação não está em control.allowed-operations no plugin.';if(this.actionOperation==='server.console'&&!policy.consoleEnabled)return 'Console desativado no plugin.';return ''; }
-  controlReason(result:any) { return ({WRITES_DISABLED:'Escritas desativadas: habilite control.writes-enabled no plugin.',OPERATION_NOT_ALLOWED:'Operação ausente da allowlist control.allowed-operations.',ROLE_NOT_ALLOWED:'Sua conta não pode executar esta operação.',OWNER_REQUIRED:'Operação exige Owner e confirmação.',CONSOLE_DISABLED:'Console remoto desativado no plugin.',PLAYER_OFFLINE:'O personagem está offline; a consulta ao vivo exige jogador conectado.',PLAYER_NOT_AUTHENTICATED:'O personagem precisa estar autenticado no AuthMe.',PLAYER_COLLECTION_DISABLED:'Habilite privacy.player-state no plugin e reinicie o Paper.',INVENTORY_COLLECTION_DISABLED:'Habilite privacy.inventories no plugin e reinicie o Paper.',INVALID_ARGUMENTS:'O plugin recusou os argumentos. Confira os valores e o alvo.',IllegalArgumentException:'O plugin recusou a operação. Confira escritas, allowlist, argumentos e autenticação no jogo.'} as Record<string,string>)[result?.payload?.reasonCode] || 'A operação não foi confirmada pelo plugin: '+this.stateName(result?.state); }
+  controlReason(result:any) { return ({SUBSCRIPTION_LIMIT:'O agente atingiu o limite de assinaturas simultâneas.',SUBSCRIPTION_FAILED:'Não foi possível iniciar a assinatura.',PAYLOAD_LIMIT:'O resultado excedeu o limite de tamanho da assinatura.',STREAMING_AGENT_REQUIRED:'Atualize o plugin e configure o canal de controle para receber dados por WebSocket.',AGENT_DISCONNECTED:'O plugin está desconectado; a assinatura será retomada quando ele voltar.',WRITES_DISABLED:'Escritas desativadas: habilite control.writes-enabled no plugin.',OPERATION_NOT_ALLOWED:'Operação ausente da allowlist control.allowed-operations.',ROLE_NOT_ALLOWED:'Sua conta não pode executar esta operação.',OWNER_REQUIRED:'Operação exige Owner e confirmação.',CONSOLE_DISABLED:'Console remoto desativado no plugin.',PLAYER_OFFLINE:'O personagem está offline; a consulta ao vivo exige jogador conectado.',PLAYER_NOT_AUTHENTICATED:'O personagem precisa estar autenticado no AuthMe.',PLAYER_COLLECTION_DISABLED:'Habilite privacy.player-state no plugin e reinicie o Paper.',INVENTORY_COLLECTION_DISABLED:'Habilite privacy.inventories no plugin e reinicie o Paper.',INVALID_ARGUMENTS:'O plugin recusou os argumentos. Confira os valores e o alvo.',IllegalArgumentException:'O plugin recusou a operação. Confira escritas, allowlist, argumentos e autenticação no jogo.'} as Record<string,string>)[result?.payload?.reasonCode] || 'A operação não foi confirmada pelo plugin: '+this.stateName(result?.state); }
   async inspectItem(id:string) { if(!registryId(id))return;this.itemAngle.set('iso');this.itemDetails.set({id,name:id});this.open('item');const detail=await this.itemCatalog.get(id);if(this.dialogType()==='item'&&this.itemDetails()?.id===id)this.itemDetails.set(detail??{id,name:id,unavailable:true}); }
   itemColor() { const color=this.itemDetails()?.colors?.map_color;return /^#[a-f0-9]{6}$/i.test(color??'')?color:null; }
   itemImage() { const item=this.itemDetails();return 'https://blocksitems.com/api/2026.1.2/'+(item?.type==='block'?'blocks/'+encodeURIComponent(item.id)+'/render.png?angle='+this.itemAngle()+'&size=256':'icon/'+encodeURIComponent(item?.id??'')+'.png?size=256'); }

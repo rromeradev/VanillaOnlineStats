@@ -3,26 +3,242 @@
   "title": "Ed25519 signed body v1 (decoded body bytes)",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "actionId", "actorId", "actorRole", "serverId", "tenantId", "operation", "kind", "arguments", "issuedAt", "expiresAt", "riskLevel", "confirmed", "nonce", "auditCorrelationId"],
+  "required": [
+    "schemaVersion",
+    "actionId",
+    "actorId",
+    "actorRole",
+    "serverId",
+    "tenantId",
+    "operation",
+    "kind",
+    "arguments",
+    "issuedAt",
+    "expiresAt",
+    "riskLevel",
+    "confirmed",
+    "nonce",
+    "auditCorrelationId"
+  ],
   "properties": {
-    "schemaVersion": {"const": 1},
-    "actionId": {"type": "string", "format": "uuid"},
-    "actorId": {"type": "string", "format": "uuid"},
-    "actorRole": {"enum": ["ADMIN", "OWNER", "PLAYER"]},
-    "serverId": {"type": "string", "format": "uuid"},
-    "tenantId": {"type": "string", "format": "uuid"},
-    "operation": {"type": "string", "pattern": "^[a-z][a-z0-9.-]{1,63}$"},
-    "kind": {"enum": ["query", "action", "link"]},
-    "arguments": {"type": "object"},
-    "issuedAt": {"type": "string", "format": "date-time"},
-    "expiresAt": {"type": "string", "format": "date-time"},
-    "riskLevel": {"enum": ["LOW", "MEDIUM", "HIGH"]},
-    "confirmed": {"type": "boolean"},
-    "nonce": {"type": "string", "format": "uuid"},
-    "auditCorrelationId": {"type": "string", "format": "uuid"}
+    "schemaVersion": {
+      "const": 1
+    },
+    "actionId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "actorId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "actorRole": {
+      "enum": [
+        "ADMIN",
+        "OWNER",
+        "PLAYER"
+      ]
+    },
+    "serverId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "tenantId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "operation": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9.-]{1,63}$"
+    },
+    "kind": {
+      "enum": [
+        "query",
+        "action",
+        "link",
+        "watch"
+      ]
+    },
+    "arguments": {
+      "type": "object"
+    },
+    "issuedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expiresAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "riskLevel": {
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH"
+      ]
+    },
+    "confirmed": {
+      "type": "boolean"
+    },
+    "nonce": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "auditCorrelationId": {
+      "type": "string",
+      "format": "uuid"
+    }
   },
-  "allOf": [{"if": {"properties": {"actorRole": {"const": "PLAYER"}}}, "then": {"oneOf": [
-    {"properties": {"kind": {"const": "link"}, "operation": {"enum": ["player.link.redeem", "player.authme.login"]}}},
-    {"properties": {"kind": {"const": "query"}, "operation": {"enum": ["player.snapshot", "player.inventory", "player.statistics", "player.advancements"]}, "arguments": {"required": ["playerId"], "properties": {"playerId": {"type": "string", "format": "uuid"}}}}}
-  ]}}]
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "actorRole": {
+            "const": "PLAYER"
+          }
+        }
+      },
+      "then": {
+        "oneOf": [
+          {
+            "properties": {
+              "kind": {
+                "const": "link"
+              },
+              "operation": {
+                "enum": [
+                  "player.link.redeem",
+                  "player.authme.login"
+                ]
+              }
+            }
+          },
+          {
+            "properties": {
+              "kind": {
+                "const": "query"
+              },
+              "operation": {
+                "enum": [
+                  "player.snapshot",
+                  "player.inventory",
+                  "player.statistics",
+                  "player.advancements"
+                ]
+              },
+              "arguments": {
+                "required": [
+                  "playerId"
+                ],
+                "properties": {
+                  "playerId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "properties": {
+              "kind": {
+                "const": "watch"
+              },
+              "operation": {
+                "enum": [
+                  "player.snapshot",
+                  "player.inventory",
+                  "player.statistics",
+                  "player.advancements"
+                ]
+              },
+              "arguments": {
+                "required": [
+                  "query"
+                ],
+                "properties": {
+                  "query": {
+                    "type": "object",
+                    "required": [
+                      "playerId"
+                    ],
+                    "properties": {
+                      "playerId": {
+                        "type": "string",
+                        "format": "uuid"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "watch"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "riskLevel": {
+            "const": "LOW"
+          },
+          "confirmed": {
+            "const": false
+          },
+          "arguments": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "watchId",
+              "query",
+              "stop"
+            ],
+            "properties": {
+              "watchId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "query": {
+                "type": "object"
+              },
+              "stop": {
+                "type": "boolean"
+              }
+            }
+          },
+          "operation": {
+            "enum": [
+              "server.snapshot",
+              "server.performance",
+              "worlds.list",
+              "world.snapshot",
+              "chunk.snapshot",
+              "block.snapshot",
+              "entity.snapshot",
+              "player.snapshot",
+              "player.inventory",
+              "player.statistics",
+              "player.advancements",
+              "statistics.catalog",
+              "host.filesystem",
+              "integrations.status",
+              "integration.luckperms",
+              "integration.vault",
+              "integration.placeholder",
+              "server.bans",
+              "server.operators",
+              "server.whitelist"
+            ]
+          }
+        }
+      }
+    }
+  ]
 }
