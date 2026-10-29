@@ -55,7 +55,7 @@ control:
   paper.stdout.pipe(output); paper.stderr.pipe(output); let done = false;
   paper.stdout.on('data', data => { if (data.toString().includes('Done (')) done = true; });
   const deadline = Date.now()+180_000;
-  while (Date.now()<deadline) { if (paper.exitCode !== null) throw new Error('Paper exited; inspect console.log'); if (done && platform.control.connected(serverId) && (await platform.db.one('SELECT count(*)::int AS n FROM vos_messages')).n > 3) break; await new Promise(r=>setTimeout(r,1000)); }
+  while (Date.now()<deadline) { if (paper.exitCode !== null) throw new Error('Paper exited; inspect console.log'); if (done && platform.control.connected(serverId) && await platform.db.one("SELECT 1 FROM vos_messages WHERE server_id=$1 AND type='server.performance.snapshot' LIMIT 1", [serverId])) break; await new Promise(r=>setTimeout(r,1000)); }
   console.log('HTTP diagnostics:',Object.fromEntries(httpResults));
   assert.ok(done && platform.control.connected(serverId),'Paper and control ready');
   const call = (path, body, cookie, csrf) => fetch(url+'/api/v1/'+path,{method:body?'POST':'GET',headers:{Origin:'http://127.0.0.1:3199','Content-Type':'application/json',...(cookie?{Cookie:cookie,'X-CSRF-Token':csrf}:{})},...(body?{body:JSON.stringify(body)}:{})});

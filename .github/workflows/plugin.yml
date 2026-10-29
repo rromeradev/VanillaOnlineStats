@@ -72,12 +72,6 @@ jobs:
         run: |
           pnpm licenses list --prod --json > .tools/licenses.json
           python scripts/package_platform.py --licenses .tools/licenses.json
-      - name: Validate production container
-        run: |
-          node scripts/setup-platform.mjs --email ci@example.test
-          docker compose --env-file .env -p vos-ci -f infrastructure/compose.yml up -d --build --wait
-          curl --fail http://127.0.0.1:3000/api/v1/health
-          docker compose --env-file .env -p vos-ci -f infrastructure/compose.yml down --volumes
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
@@ -94,3 +88,20 @@ jobs:
             .tools/release-smoke/control-responses.json
             .tools/platform-smoke/console.log
             .tools/platform-smoke/results.txt
+  production:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Build and start production installation
+        run: |
+          node scripts/setup-platform.mjs --email ci@example.test
+          docker compose --env-file .env -p vos-ci -f infrastructure/compose.yml up -d --build --wait
+          curl --fail http://127.0.0.1:3000/api/v1/health
+          node -e "fetch('http://127.0.0.1:3000/login').then(async r=>{const html=await r.text();const css=/href=\"(styles-[^\"]+\.css)\"/.exec(html)?.[1];if(!r.ok||!css||html.includes('media=\"print\"')||!(await fetch('http://127.0.0.1:3000/'+css)).ok)process.exit(1)})"
+      - name: Stop disposable installation
+        if: always()
+        run: |
+          if [ -f .env ]; then docker compose --env-file .env -p vos-ci -f infrastructure/compose.yml down --volumes; fi
