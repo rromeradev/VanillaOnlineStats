@@ -1,6 +1,6 @@
 {
   "name": "@vanillaonlinestats/api",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "private": true,
   "license": "AGPL-3.0-only",
   "scripts": {
@@ -16,11 +16,15 @@
     "ajv-formats": "3.0.1",
     "express": "5.3.0",
     "reflect-metadata": "0.2.2",
-    "rxjs": "7.8.2"
+    "rxjs": "7.8.2",
+    "pg": "8.23.1",
+    "ws": "8.22.0"
   },
   "devDependencies": {
     "@types/express": "5.0.3",
     "@types/node": "24.10.0",
+    "@types/pg": "8.15.6",
+    "@types/ws": "8.18.1",
     "typescript": "5.9.3"
   }
 }

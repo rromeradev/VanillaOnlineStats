@@ -22,3 +22,4 @@ world_the_end/
 Thumbs.db
 .tools/
 __pycache__/
+.angular/

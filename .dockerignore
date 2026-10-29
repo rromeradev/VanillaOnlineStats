@@ -1,0 +1,11 @@
+.git
+.tools
+.env
+.env.*
+**/node_modules
+**/dist
+**/.angular
+**/build
+**/.gradle
+*.log
+plugin

@@ -102,6 +102,22 @@ class ReleaseCoreTest {
   }
 
   @Test
+  void playerQueriesAreBoundToTheirOwnIdentity() throws Exception {
+    JsonObject query = body();
+    query.addProperty("actorRole", "PLAYER");
+    query.addProperty("kind", "query");
+    query.addProperty("operation", "player.inventory");
+    query.add("arguments", Telemetry.object("playerId", query.get("actorId").getAsString()));
+    assertEquals("PLAYER", verifier().verify(sign(query), Instant.now()).role());
+    query.getAsJsonObject("arguments").addProperty("playerId", UUID.randomUUID().toString());
+    assertThrows(
+        GeneralSecurityException.class, () -> verifier().verify(sign(query), Instant.now()));
+    query.addProperty("operation", "server.snapshot");
+    assertThrows(
+        GeneralSecurityException.class, () -> verifier().verify(sign(query), Instant.now()));
+  }
+
+  @Test
   void auditClaimsSurviveRestartAndNeverPersistArguments() throws Exception {
     JsonObject body = body();
     body.getAsJsonObject("arguments").addProperty("password", "NEVER_PERSIST");

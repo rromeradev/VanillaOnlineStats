@@ -2,9 +2,9 @@
 
 Observabilidade para servidores Minecraft Paper Survival, com integração obrigatória ao AuthMeReloaded e áreas Admin e Player.
 
-**Estado: release funcional do agente 0.3.0.** Plugin para Paper 26.3 build 227, Java 25 e AuthMe 6.0.1 Paper, com coletores, eventos, consultas, telemetria limitada, spool criptografado opcional e controle assinado. API atual recebe somente heartbeat; endpoints completos e painéis serão a próxima etapa.
+**Estado: plataforma self-hosted 0.4.0 e agente 0.3.1.** API NestJS com PostgreSQL e painel Angular para Paper 26.3 build 227, Java 25 e AuthMe 6.0.1 Paper. Áreas Owner/Admin e Player, consultas, controles auditados, histórico e temas claro/escuro/automático.
 
-Leia a [cobertura e instalação da release](docs/plugin/RELEASE-0.3.0.md). A release não implementa todas as integrações opcionais/futuras do blueprint; a matriz informa explicitamente as limitações.
+Comece pelo [guia de instalação da plataforma](docs/platform/RELEASE-0.4.0.md). Consulte também a [cobertura do agente](docs/plugin/RELEASE-0.3.0.md). A release não implementa todas as integrações opcionais/futuras do blueprint; a matriz informa explicitamente as limitações.
 
 ## Projeto
 

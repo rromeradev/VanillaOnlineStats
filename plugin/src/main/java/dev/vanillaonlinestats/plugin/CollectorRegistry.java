@@ -157,6 +157,8 @@ final class CollectorRegistry {
     return object(
         "schemaVersion",
         1,
+        "playerQueries",
+        true,
         "collectors",
         collectors.stream().map(Collector::id).toList(),
         "privacy",

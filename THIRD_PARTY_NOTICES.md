@@ -26,3 +26,12 @@ As dependências transitivas estão no lockfile/metadados Gradle. SBOM e revisã
 - RxJS 7.8.2: Apache-2.0.
 
 Versões e integridade das dependências JavaScript em pnpm-lock.yaml; os pacotes distribuídos pelos gerenciadores mantêm seus textos de licença. O software não inclui binários Paper/AuthMe. Não há release de distribuição agregada nesta etapa.
+
+## Portal e persistência 0.4.0
+
+- Angular 22.2.3/CLI e build 22.2.5: MIT; TypeScript 6.0.3: Apache-2.0.
+- node-postgres (pg) 8.23.1, ws 8.22.0 e tslib 2.8.1: MIT.
+- PostgreSQL é serviço externo sob PostgreSQL License; Docker usa a imagem oficial.
+- Node.js é runtime externo; textos de licença das dependências são mantidos nos pacotes instalados.
+
+O bundle web contém Angular/RxJS/tslib; apps/web/dist/3rdpartylicenses.txt é gerado pelo build e deve acompanhar a distribuição. A lista completa de versões e integridade está em pnpm-lock.yaml. Nenhum Paper/AuthMe é redistribuído.

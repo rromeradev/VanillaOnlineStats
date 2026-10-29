@@ -34,7 +34,18 @@ final class RemoteActions {
     if (!request.expiresAt().isAfter(Instant.now())) throw new IllegalArgumentException("Expired");
     JsonObject args = request.arguments();
     String op = request.operation();
-    if (request.kind().equals("query")) return snapshots.query(op, args);
+    if (request.kind().equals("query")) {
+      if (request.role().equals("PLAYER")
+          && (!Set.of(
+                      "player.snapshot",
+                      "player.inventory",
+                      "player.statistics",
+                      "player.advancements")
+                  .contains(op)
+              || !request.actorId().toString().equals(args.get("playerId").getAsString())))
+        throw new IllegalArgumentException("Own data only");
+      return snapshots.query(op, args);
+    }
     if (request.kind().equals("link")) {
       if (!op.equals("player.link.redeem"))
         throw new IllegalArgumentException("Unknown link operation");

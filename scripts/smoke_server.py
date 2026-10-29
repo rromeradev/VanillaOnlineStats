@@ -39,7 +39,7 @@ for with_authme in (True, False):
     if with_authme and args.heartbeat:
         server_id = str(uuid.uuid4())
         token = secrets.token_urlsafe(32)
-        environment.update(VOS_AGENT_TOKEN=token, VOS_AGENT_SERVER_ID=server_id,
+        environment.update(VOS_LEGACY_MODE='1', VOS_AGENT_TOKEN=token, VOS_AGENT_SERVER_ID=server_id,
             VOS_TENANT_ID=str(uuid.uuid4()),
             VOS_AGENT_TOKEN_SHA256=hashlib.sha256(token.encode()).hexdigest(), PORT="3009", HOST="127.0.0.1")
         config = root / "plugins/VanillaOnlineStats"

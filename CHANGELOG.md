@@ -2,6 +2,17 @@
 
 ## Não lançado
 
+## 0.4.0 — 2026-10-28
+
+- API persistente PostgreSQL: lotes, snapshots, histórico, alertas e isolamento tenant/servidor.
+- Portal Angular responsivo com temas claro, escuro e padrão do sistema.
+- Autenticação Owner/Admin, vínculo e rotação de agentes, membros e troca de senha.
+- Área Player por código in-game, perfil, jornada, inventário, estatísticas e conquistas.
+- Consultas e todas as ações tipadas do agente através de WebSocket assinado e auditoria.
+- Dockerfile, Compose, configuração privada inicial e guia de instalação.
+- Plugin 0.3.1: consultas Player limitadas ao UUID do próprio ator, anunciadas nas capacidades.
+- Testes PostgreSQL de autorização/persistência e integração com Paper real.
+
 ## 0.3.0 — 2026-10-28
 
 - Release funcional do plugin: coletores de servidor, JVM/performance, mundos e jogadores; consultas limitadas de chunks, entidades, inventários, estatísticas e advancements.

@@ -7,7 +7,7 @@ Use Java 25 no JAVA_HOME. No diretório plugin:
 - Windows: ./gradlew.bat clean build
 - Linux/macOS: bash gradlew clean build
 
-O JAR atual fica em plugin/build/libs/VanillaOnlineStats-0.2.0-SNAPSHOT.jar. Paper/AuthMe são dependências externas; não estão incluídos no JAR. Para habilitar a conexão com a API, consulte [heartbeat](heartbeat.md).
+O JAR atual fica em plugin/build/libs/VanillaOnlineStats-0.3.1.jar. Paper/AuthMe são dependências externas; não estão incluídos no JAR. Para habilitar a conexão com a API, consulte [heartbeat](heartbeat.md).
 
 Em um servidor de testes separado, instale AuthMe-6.0.1-Paper.jar e o JAR do projeto em plugins/. Execute vos status no console ou /vos status com vanillaonlinestats.status (OP por padrão). Esta permissão local não cria identidade Admin/Owner do portal.
 
@@ -19,7 +19,7 @@ O script scripts/smoke_server.py cria dois diretórios novos, com e sem AuthMe, 
 
 Leia a EULA Minecraft antes de usar a opção --accept-eula. Exemplo a partir da raiz:
 
-python scripts/smoke_server.py --java CAMINHO_JAVA_25 --paper CAMINHO_PAPER_227 --authme CAMINHO_AUTHME_PAPER --plugin plugin/build/libs/VanillaOnlineStats-0.2.0-SNAPSHOT.jar --output .tools/smoke --heartbeat --accept-eula
+python scripts/smoke_server.py --java CAMINHO_JAVA_25 --paper CAMINHO_PAPER_227 --authme CAMINHO_AUTHME_PAPER --plugin plugin/build/libs/VanillaOnlineStats-0.3.1.jar --output .tools/smoke --heartbeat --accept-eula
 
 ## Contratos
 
@@ -46,3 +46,8 @@ Artefatos usados, com SHA-256 conferido contra a origem oficial:
 - AuthMe-6.0.1-Paper.jar (versão interna 6.0.1-b2770): 7704335e9e73a634d9d926344f77897f4c74f78f82453a59f5aa0f8d2722450a
 
 A CI repete o teste isolado nas duas condições, agora também com queda e reconexão da API, e disponibiliza relatórios e logs como artefato. O resultado de bootstrap acima refere-se à build inicial; o guia de heartbeat descreve a versão atual.
+
+
+## API e painel
+
+Consulte o [guia 0.4.0](../platform/RELEASE-0.4.0.md) para PostgreSQL, configuração, Docker e conexão do plugin.

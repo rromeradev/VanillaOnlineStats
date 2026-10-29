@@ -84,7 +84,19 @@ final class ControlSecurity {
       if (!Set.of("ADMIN", "OWNER").contains(role)
           && !(role.equals("PLAYER")
               && kind.equals("link")
-              && operation.equals("player.link.redeem")))
+              && operation.equals("player.link.redeem"))
+          && !(role.equals("PLAYER")
+              && kind.equals("query")
+              && Set.of(
+                      "player.snapshot",
+                      "player.inventory",
+                      "player.statistics",
+                      "player.advancements")
+                  .contains(operation)
+              && value
+                  .get("actorId")
+                  .getAsString()
+                  .equals(value.getAsJsonObject("arguments").get("playerId").getAsString())))
         throw new GeneralSecurityException("role");
       if (!Set.of("query", "action", "link").contains(kind)
           || !operation.matches("[a-z][a-z0-9.-]{1,63}")

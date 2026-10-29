@@ -1,3 +1,7 @@
+# Guia legado de heartbeat 0.2
+
+Para instalar a plataforma atual com PostgreSQL e painel, siga [release 0.4.0](../platform/RELEASE-0.4.0.md). As instruções abaixo descrevem o modo VOS_LEGACY_MODE=1 para testes antigos em memória.
+
 # Testar o heartbeat
 
 Baseline: Paper 26.3 build 227, Java 25, AuthMe 6.0.1-b2770. API: Node 24 e pnpm 10.34.9.

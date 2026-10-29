@@ -9,7 +9,7 @@ heartbeat:
   allow-loopback-http: false
 # Credencial somente via variavel de ambiente VOS_AGENT_TOKEN; nunca neste arquivo.
 telemetry:
-  # Vazio mantém coleta local. API atual 0.2 só recebe heartbeat.
+  # Vazio mantém coleta local. API 0.4 recebe os lotes autenticados.
   endpoint: ''
 collectors:
   period-seconds: 10

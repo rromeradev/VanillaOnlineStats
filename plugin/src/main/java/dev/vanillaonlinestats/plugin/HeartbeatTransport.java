@@ -41,6 +41,7 @@ final class HeartbeatTransport implements AutoCloseable {
   HeartbeatTransport(URI endpoint, String token, int timeoutSeconds) {
     client =
         HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_1_1)
             .connectTimeout(Duration.ofSeconds(timeoutSeconds))
             .followRedirects(HttpClient.Redirect.NEVER)
             .build();

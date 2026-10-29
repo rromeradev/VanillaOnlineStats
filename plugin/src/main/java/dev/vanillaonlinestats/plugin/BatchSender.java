@@ -25,6 +25,7 @@ final class BatchSender implements AutoCloseable {
     this.bus = bus;
     client =
         HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_1_1)
             .connectTimeout(Duration.ofSeconds(settings.timeoutSeconds()))
             .followRedirects(HttpClient.Redirect.NEVER)
             .build();

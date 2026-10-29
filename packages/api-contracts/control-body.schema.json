@@ -21,5 +21,8 @@
     "nonce": {"type": "string", "format": "uuid"},
     "auditCorrelationId": {"type": "string", "format": "uuid"}
   },
-  "allOf": [{"if": {"properties": {"actorRole": {"const": "PLAYER"}}}, "then": {"properties": {"kind": {"const": "link"}, "operation": {"const": "player.link.redeem"}}}}]
+  "allOf": [{"if": {"properties": {"actorRole": {"const": "PLAYER"}}}, "then": {"oneOf": [
+    {"properties": {"kind": {"const": "link"}, "operation": {"const": "player.link.redeem"}}},
+    {"properties": {"kind": {"const": "query"}, "operation": {"enum": ["player.snapshot", "player.inventory", "player.statistics", "player.advancements"]}, "arguments": {"required": ["playerId"], "properties": {"playerId": {"type": "string", "format": "uuid"}}}}}
+  ]}}]
 }
