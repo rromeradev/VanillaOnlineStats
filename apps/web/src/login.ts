@@ -18,7 +18,7 @@ import { Api, Theme } from './api';
 <label>Senha<input type="password" [(ngModel)]="password" name="password" autocomplete="current-password" required placeholder="Sua senha de administrador"></label>
 } @else {
 <div class="helper-box">Entre com seu nick e a senha cadastrada no AuthMe. Você pode estar offline no jogo.</div>
-<label>Servidor<select [(ngModel)]="serverId" name="server" required><option value="">Selecione seu servidor</option>@for(server of publicServers(); track server.id){<option [value]="server.id">{{server.name}}</option>}</select></label>
+@if(publicServers().length > 1){<label>Servidor<select [(ngModel)]="serverId" name="server" required><option value="">Selecione seu servidor</option>@for(server of publicServers(); track server.id){<option [value]="server.id">{{server.name}}</option>}</select></label>}
 <label>Nick do Minecraft<input [(ngModel)]="nickname" name="nickname" autocomplete="username" required minlength="3" maxlength="16" placeholder="Seu nick"></label><label>Senha do AuthMe<input type="password" [(ngModel)]="password" name="playerPassword" autocomplete="current-password" maxlength="128" required placeholder="Sua senha do AuthMe"></label>
 @if (!publicServers().length) {<p class="muted small">Nenhum servidor habilitou o acesso de jogadores ainda.</p>}
 }<button class="button primary full" type="submit" [disabled]="busy()">{{busy() ? 'Verificando…' : 'Entrar no portal'}} <span>↗</span></button></form>
@@ -27,7 +27,7 @@ import { Api, Theme } from './api';
 export class Login {
   api = inject(Api); theme = inject(Theme); router = inject(Router); mode = signal<'admin' | 'player'>('admin'); error = signal(''); busy = signal(false); publicServers = signal<any[]>([]);
   email = ''; password = ''; serverId = ''; code = ''; nickname = '';
-  constructor() { void this.api.request('public/info').then(value => this.api.info.set(value)); void this.api.request<any[]>('public/servers').then(value => this.publicServers.set(value)); }
+  constructor() { void this.api.request('public/info').then(value => this.api.info.set(value)); void this.api.request<any[]>('public/servers').then(value => { this.publicServers.set(value); if(value.length === 1) this.serverId = value[0].id; }); }
   selectMode(value: 'admin' | 'player') { this.password = ''; this.error.set(''); this.mode.set(value); }
   cycleTheme() { this.theme.set(this.theme.choice() === 'auto' ? 'light' : this.theme.choice() === 'light' ? 'dark' : 'auto'); }
   async submit() { this.error.set(''); this.busy.set(true); try { const value = await this.api.post(this.mode() === 'admin' ? 'auth/admin/login' : 'auth/player/login', this.mode() === 'admin' ? { email: this.email, password: this.password } : { serverId: this.serverId, nickname: this.nickname, password: this.password }); this.password = ''; this.code = ''; this.nickname = ''; this.api.identity.set(value); await this.router.navigateByUrl(value.kind === 'ADMIN' ? '/admin/overview' : '/player/overview'); } catch (error: any) { this.error.set(error.message); } finally { this.busy.set(false); } }
