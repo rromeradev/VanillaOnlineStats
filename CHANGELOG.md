@@ -2,6 +2,9 @@
 
 ## Não lançado
 
+- Deploy Coolify via Compose na raiz, variáveis runtime obrigatórias e PostgreSQL interno persistente.
+- Gerador privado de variáveis para Coolify, guia de instalação e teste da configuração na CI.
+
 ## 0.4.1 — 2026-10-29
 
 - Login Player por nick/senha AuthMe, sem presença no jogo e sem /vos link.

@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Coolify Git application: base directory /, Compose location /docker-compose.coolify.yml.
+# Assign the public domain to portal, internal port 3000. No host ports are published.
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: vanilla_stats
+      POSTGRES_USER: vos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U vos -d vanilla_stats']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  portal:
+    build:
+      context: .
+      dockerfile: infrastructure/Dockerfile
+    restart: unless-stopped
+    expose: ['3000']
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+      DATABASE_URL: postgresql://vos:${POSTGRES_PASSWORD:?}@db:5432/vanilla_stats
+      APP_ORIGIN: ${APP_ORIGIN:?}
+      VOS_TENANT_ID: ${VOS_TENANT_ID:?}
+      VOS_ADMIN_EMAIL: ${VOS_ADMIN_EMAIL:?}
+      VOS_ADMIN_PASSWORD: ${VOS_ADMIN_PASSWORD:?}
+      VOS_DATA_KEY: ${VOS_DATA_KEY:?}
+      VOS_SESSION_SECRET: ${VOS_SESSION_SECRET:?}
+      VOS_CONTROL_PRIVATE_KEY: ${VOS_CONTROL_PRIVATE_KEY:?}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 10
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+volumes:
+  postgres:

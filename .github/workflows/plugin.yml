@@ -101,7 +101,14 @@ jobs:
           docker compose --env-file .env -p vos-ci -f infrastructure/compose.yml up -d --build --wait
           curl --fail http://127.0.0.1:3000/api/v1/health
           node -e "fetch('http://127.0.0.1:3000/login').then(async r=>{const html=await r.text();const css=/href=\"(styles-[^\"]+\.css)\"/.exec(html)?.[1];if(!r.ok||!css||html.includes('media=\"print\"')||!(await fetch('http://127.0.0.1:3000/'+css)).ok)process.exit(1)})"
+      - name: Validate Coolify Compose installation
+        run: |
+          node scripts/setup-platform.mjs --coolify --email ci@example.test --origin http://127.0.0.1:3000 --output .env.coolify
+          docker compose --env-file .env.coolify -p vos-coolify-ci -f docker-compose.coolify.yml config --quiet
+          docker compose --env-file .env.coolify -p vos-coolify-ci -f docker-compose.coolify.yml up -d --build --wait
+          docker compose --env-file .env.coolify -p vos-coolify-ci -f docker-compose.coolify.yml exec -T portal node -e "Promise.all(['/api/v1/health','/login'].map(p=>fetch('http://127.0.0.1:3000'+p))).then(rs=>{if(rs.some(r=>!r.ok))process.exit(1)}).catch(()=>process.exit(1))"
       - name: Stop disposable installation
         if: always()
         run: |
           if [ -f .env ]; then docker compose --env-file .env -p vos-ci -f infrastructure/compose.yml down --volumes; fi
+          if [ -f .env.coolify ]; then docker compose --env-file .env.coolify -p vos-coolify-ci -f docker-compose.coolify.yml down --volumes; fi

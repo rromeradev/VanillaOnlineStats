@@ -30,6 +30,8 @@ Self-hosted primeiro, com isolamento por tenant e servidor desde o início. A ev
 
 ## Desenvolvimento
 
+Para hospedar API e painel no Coolify, siga o [guia de deploy](docs/deployment/coolify.md) usando `docker-compose.coolify.yml` na raiz do repositório.
+
 Consulte o [setup local](docs/development/local-setup.md) e o [guia de heartbeat](docs/development/heartbeat.md). O projeto usa Gradle Wrapper, pnpm, JUnit e JSON Schema. A CI compila, verifica autorização/contratos e testa queda/reconexão da API usando um servidor Paper real.
 
 ## Licença
