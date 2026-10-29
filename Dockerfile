@@ -23,7 +23,10 @@ COPY apps/api/migrations apps/api/migrations
 COPY --from=build /app/apps/web/dist apps/web/dist
 RUN cp apps/web/dist/3rdpartylicenses.txt apps/web/dist/browser/3rdpartylicenses.txt
 COPY packages/api-contracts packages/api-contracts
+COPY scripts/runtime.mjs scripts/runtime.mjs
+COPY scripts/check-deployment.mjs scripts/check-deployment.mjs
+RUN mkdir -p /app/state && chown node:node /app/state
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s CMD node -e "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-CMD ["node", "apps/api/dist/main.js"]
+CMD ["node", "scripts/runtime.mjs"]

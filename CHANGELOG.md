@@ -2,6 +2,10 @@
 
 ## Não lançado
 
+- Stack Compose completo para Coolify 4.5.3, com exemplos de variáveis, geração nativa de senhas/Base64 e UUID/Ed25519 persistentes.
+- Testes de identidade automática, preservação no redeploy e rotas do painel no stack completo.
+
+
 - Dockerfile na raiz para Git Repository com GitHub App no Coolify; variáveis somente em runtime e PostgreSQL separado.
 - Documentação consolidada em docs/, removendo duplicatas, guias antigos por release e diretórios sem implementação.
 - Comando start padronizado e verificação de rotas SPA/JS/CSS no deploy.

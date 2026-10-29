@@ -4,25 +4,26 @@ Painel web e API para servidores Minecraft Paper, com integração AuthMe e áre
 
 **Versões:** plataforma 0.4.1, plugin 0.3.2. **Baseline:** Paper 26.3 build 227, Java 25 e AuthMe 6.0.1-b2770.
 
-## Deploy no Coolify com GitHub App
+## Deploy no Coolify 4.5.3
 
-1. Crie uma aplicação em **Git Repository (with GitHub App)** e selecione este repositório, branch `main`.
-2. Use **Build Pack: Dockerfile**, **Base Directory: /**, **Dockerfile: /Dockerfile** e **Port: 3000**.
-3. Configure as variáveis de runtime diretamente em **Environment Variables** no Coolify e informe a conexão do seu PostgreSQL.
-4. Configure o domínio HTTPS e clique em **Deploy**. O mesmo container serve painel, API e WebSocket. A página inicial abre o painel/login.
+1. Use **Git Repository (with GitHub App)**, este repositório e branch `main`.
+2. Selecione **Docker Compose**, Base Directory `/` e arquivo `/docker-compose.yml`.
+3. O Coolify gera os segredos `SERVICE_*`. Preencha os campos manuais vazios: `APP_ORIGIN` e `VOS_ADMIN_EMAIL`.
+4. Configure o domínio no serviço `portal`, porta interna 3000, e faça Deploy.
 
-Nenhum arquivo `.env` precisa ser criado ou enviado para o deploy. Veja [variáveis e configuração do Coolify](docs/DEPLOYMENT.md).
+O Compose inclui **PostgreSQL, API e painel**, sem dependências externas para a instalação padrão. UUID e chave Ed25519 são gerados no primeiro início e preservados em volume. Veja [variáveis de exemplo](.env.example) e o [guia completo](docs/DEPLOYMENT.md). Não é necessário criar arquivo `.env` local.
 
 ## Estrutura
 
 | Caminho | Conteúdo |
 |---|---|
-| `Dockerfile` | Build e execução da aplicação no Coolify |
+| `docker-compose.yml` | Stack completo para Coolify |
+| `Dockerfile` | Imagem da API e do painel |
 | `apps/web` | Painel Angular |
 | `apps/api` | API NestJS e migração PostgreSQL |
 | `plugin` | Agente Paper/AuthMe em Java |
 | `packages/api-contracts` | Contratos JSON Schema compartilhados |
-| `infrastructure/compose.yml` | Ambiente local opcional com PostgreSQL |
+| `.env.example` | Campos manuais e variáveis automáticas |
 | `scripts` | Configuração, testes de integração e empacotamento |
 | `docs` | Documentação consolidada |
 

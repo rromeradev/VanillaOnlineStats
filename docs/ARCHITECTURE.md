@@ -1,6 +1,6 @@
 # Arquitetura
 
-O monorepo reúne plugin Paper/Java, API NestJS e painel Angular. O build Docker usa a raiz como contexto e entrega painel/API no mesmo container; PostgreSQL é um serviço separado. O frontend usa URLs relativas, evitando configuração por domínio no build.
+O monorepo reúne plugin Paper/Java, API NestJS e painel Angular. O build Docker usa a raiz como contexto e entrega painel/API no mesmo container; PostgreSQL é outro serviço do mesmo Compose. O frontend usa URLs relativas, evitando configuração por domínio no build.
 
 ## Identidade e autorização
 
@@ -24,4 +24,4 @@ Pedidos de exportação/exclusão são registrados para atendimento manual. Não
 
 ## Evolução
 
-A baseline foi definida primeiro, seguida por heartbeat mínimo, agente funcional, API/painel e login AuthMe offline. O deploy GitHub App foi padronizado em Dockerfile na raiz; configurações locais são auxiliares. Mudanças de arquitetura, identidade e controles devem atualizar este documento e incluir motivação e testes na descrição do commit/PR. A [especificação](SPECIFICATION.md) registra a visão original; a cobertura atual é descrita aqui, no plugin e no roadmap.
+A baseline foi definida primeiro, seguida por heartbeat mínimo, agente funcional, API/painel e login AuthMe offline. O deploy GitHub App usa o Compose da raiz, com PostgreSQL e painel/API. O Coolify gera senhas e Base64; a aplicação gera UUID/Ed25519 em volume persistente. O Dockerfile constrói a imagem do portal. Mudanças de arquitetura, identidade e controles devem atualizar este documento e incluir motivação e testes na descrição do commit/PR. A [especificação](SPECIFICATION.md) registra a visão original; a cobertura atual é descrita aqui, no plugin e no roadmap.

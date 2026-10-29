@@ -11,7 +11,7 @@ pnpm start
 
 O comando de início usa variáveis do ambiente. Para desenvolvimento local, o gerador opcional `node scripts/setup-platform.mjs --email voce@exemplo.com` cria `.env` privado; nesse caso inicie com `node --env-file=.env apps/api/dist/main.js`. Este arquivo não faz parte do deploy no Coolify.
 
-`infrastructure/compose.yml` é uma alternativa local com PostgreSQL: gere `.env` e execute `docker compose --env-file .env -f infrastructure/compose.yml up -d --build`.
+O Compose da raiz é o stack completo para Coolify. Fora do Coolify, Docker Compose não gera os valores SERVICE_*: forneça-os no ambiente. A CI usa `scripts/compose-test-env.mjs` como fixture descartável e testa identidade automática e recriação do container. Para desenvolvimento com Node, use um PostgreSQL de desenvolvimento na conexão DATABASE_URL.
 
 Para desenvolver o painel separadamente, mantenha API em 3000, `APP_ORIGIN=http://localhost:4200` e execute `pnpm --filter @vanillaonlinestats/web start`. O proxy encaminha `/api`. Para compilar o plugin: `cd plugin` e `./gradlew.bat build` (Windows) ou `bash gradlew build` (Linux/macOS).
 

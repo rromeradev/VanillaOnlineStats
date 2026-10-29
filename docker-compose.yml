@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Coolify 4.5.3: GitHub App -> Docker Compose -> /docker-compose.yml
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: vanilla_stats
+      POSTGRES_USER: vos
+      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_DATABASE}
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U vos -d vanilla_stats']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  portal:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    expose: ['3000']
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      DATABASE_URL: postgresql://vos:${SERVICE_PASSWORD_DATABASE}@db:5432/vanilla_stats
+      APP_ORIGIN: ${APP_ORIGIN:-}
+      VOS_ADMIN_EMAIL: ${VOS_ADMIN_EMAIL:-}
+      VOS_ADMIN_PASSWORD: ${SERVICE_PASSWORD_OWNER}
+      VOS_DATA_KEY: ${SERVICE_REALBASE64_32_DATA}
+      VOS_SESSION_SECRET: ${SERVICE_BASE64_64_SESSION}
+      VOS_TENANT_ID: ${VOS_TENANT_ID:-}
+      VOS_CONTROL_PRIVATE_KEY: ${VOS_CONTROL_PRIVATE_KEY:-}
+      VOS_STATE_DIR: /app/state
+    volumes:
+      - identity:/app/state
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 10
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+volumes:
+  postgres:
+  identity:

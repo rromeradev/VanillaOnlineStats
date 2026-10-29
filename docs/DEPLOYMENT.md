@@ -1,71 +1,57 @@
-# Deploy: Coolify com GitHub App
+# Deploy no Coolify 4.5.3
 
-O `Dockerfile` na raiz é o ponto de entrada do deploy. Ele compila Angular e NestJS, instala dependências de produção e inicia uma aplicação que serve painel, API e WebSocket na porta 3000. As variáveis são configuradas diretamente no Coolify; não existe dependência de arquivo `.env` no container.
+O arquivo principal é **`docker-compose.yml`**, na raiz. Ele contém PostgreSQL e a aplicação que serve API, painel Angular e WebSocket. Banco e identidade criptográfica ficam em volumes persistentes. Não é necessário criar banco separado, gerar arquivo `.env` local ou executar comandos antes do deploy.
 
-## Aplicação
+## GitHub App
 
-Em **Git Repository (with GitHub App)**, selecione o repositório `rromeradev/VanillaOnlineStats` e configure:
+1. Em **Git Repository (with GitHub App)**, selecione este repositório e a branch `main`.
+2. Selecione **Docker Compose** como Build Pack, **Base Directory `/`** e **Docker Compose Location `/docker-compose.yml`**.
+3. Salve/carregue o Compose. O Coolify reconhece as referências e gera as variáveis `SERVICE_*`.
+4. Preencha somente os campos manuais inicialmente vazios: **`APP_ORIGIN`** e **`VOS_ADMIN_EMAIL`**.
+5. Configure o domínio no serviço **`portal`**, porta interna **3000**, e faça **Deploy**.
 
-| Campo | Valor |
+Exemplo de domínio no Coolify: `https://stats.rromera.dev:3000`. A URL pública é `https://stats.rromera.dev`; `APP_ORIGIN` deve conter essa URL pública **sem `:3000`**, caminho ou barra final. O sufixo na configuração de domínio seleciona a porta interna do container.
+
+O arquivo [`.env.example`](../.env.example) documenta todos os campos, com exemplos em comentários. Os campos manuais começam vazios. Não importe os campos automáticos vazios por cima dos valores que o Coolify já gerou.
+
+## Variáveis e geração automática
+
+| Campo | Responsável / comportamento |
 |---|---|
-| Branch | `main` |
-| Build Pack / Build strategy | `Dockerfile` |
-| Base Directory | `/` |
-| Dockerfile Location | `/Dockerfile` |
-| Ports Exposes | `3000` |
-| Health check | `/api/v1/health`, porta `3000` (também definido na imagem) |
-| Domínio | Sua URL HTTPS pública, por exemplo `https://stats.rromera.dev` |
+| `APP_ORIGIN` | Manual, vazio. Exemplo: `https://stats.rromera.dev` |
+| `VOS_ADMIN_EMAIL` | Manual, vazio. E-mail da primeira conta Owner |
+| `SERVICE_PASSWORD_DATABASE` | Coolify gera a senha PostgreSQL e reutiliza na conexão da API |
+| `SERVICE_PASSWORD_OWNER` | Coolify gera a senha inicial Owner, visível nas variáveis do recurso |
+| `SERVICE_REALBASE64_32_DATA` | Coolify gera a chave de dados, Base64 de 32 bytes reais |
+| `SERVICE_BASE64_64_SESSION` | Coolify gera o segredo de sessão, com 64 caracteres |
+| `VOS_TENANT_ID` | Vazio: a aplicação gera um UUID uma vez e o preserva no volume `identity` |
+| `VOS_CONTROL_PRIVATE_KEY` | Vazio: a aplicação gera Ed25519 uma vez e a preserva no volume `identity` |
 
-A seleção GitHub App define de onde vem o código; Dockerfile define como construí-lo. Se sua versão do Coolify não selecionar Dockerfile automaticamente, escolha esse Build Pack uma vez. Não selecione Static: o painel precisa da API no mesmo serviço. Não é necessário configurar comandos de build/start no Coolify.
+A geração `PASSWORD`, `BASE64_64` e `REALBASE64_32` foi conferida no [código do Coolify v4.5.3](https://github.com/coollabsio/coolify/blob/v4.5.3/bootstrap/helpers/shared.php). UUID e Ed25519 não são geradores nativos dessa versão; por isso a aplicação os gera e guarda em `/app/state/identity.json`, com acesso restrito. Eles não são reimpressos nos logs, regenerados a cada reinício ou inseridos em arquivos versionados.
 
-## PostgreSQL
+`DATABASE_URL`, `HOST`, `PORT`, `POSTGRES_DB` e `POSTGRES_USER` já são montados/fixados no Compose. Não preencha uma conexão externa para a instalação padrão. Nenhuma porta do PostgreSQL é publicada no host.
 
-Crie um recurso **PostgreSQL 18** no Coolify ou utilize um PostgreSQL existente. Permita que a aplicação alcance sua rede privada e copie a conexão **interna** para `DATABASE_URL`. Use o hostname interno informado pelo Coolify, não `localhost`: a aplicação e o banco rodam em containers distintos. O Dockerfile não cria um banco embutido. O banco precisa estar disponível antes do deploy; as tabelas são criadas pela API no início.
+## Primeiro acesso
 
-## Variáveis no Coolify
+Aguarde `db` e `portal` ficarem saudáveis. Abra seu domínio: o painel/login deve carregar. `/api/v1/health` confirma a API. Entre com `VOS_ADMIN_EMAIL` e a senha gerada em **`SERVICE_PASSWORD_OWNER`** no Coolify. Altere a senha pelo botão da conta após entrar.
 
-Cadastre os valores em **Environment Variables**, disponíveis em runtime. Não precisam ser variáveis de build. `HOST=0.0.0.0`, `PORT=3000` e `NODE_ENV=production` já são padrões da imagem.
+O proxy do Coolify cuida do HTTPS e encaminha para o `portal:3000`. Painel, API e WSS usam o mesmo domínio. O plugin Paper é vinculado na Configuração do painel; veja [PLUGIN.md](PLUGIN.md).
 
-| Variável | Valor |
-|---|---|
-| `DATABASE_URL` | Conexão PostgreSQL interna completa |
-| `APP_ORIGIN` | URL HTTPS pública exata, sem caminho nem barra final |
-| `VOS_ADMIN_EMAIL` | E-mail da primeira conta Owner |
-| `VOS_ADMIN_PASSWORD` | Senha inicial do Owner, com pelo menos 12 caracteres |
-| `VOS_TENANT_ID` | UUID da instalação |
-| `VOS_DATA_KEY` | 32 bytes aleatórios codificados em Base64 |
-| `VOS_SESSION_SECRET` | Segredo aleatório de pelo menos 32 caracteres |
-| `VOS_CONTROL_PRIVATE_KEY` | Chave privada Ed25519, PKCS8 DER codificado em Base64 |
+## Atualizações, migração e backup
 
-Para uma instalação existente, reutilize tenant, segredos, chave privada e banco. Não gere outra chave de dados para um banco existente. Senha inicial do Owner só cria a primeira conta: alterá-la no ambiente não troca a senha de uma conta já criada.
+Preserve os volumes `postgres` e `identity`, assim como os valores `SERVICE_*` salvos no Coolify. Faça backup de ambos e das variáveis. Excluir o volume `identity` ou trocar os segredos pode impedir acesso a dados existentes e romper a confiança do plugin. Não use múltiplas réplicas de `portal`.
 
-Se ainda não possui os segredos, este comando opcional imprime valores novos para copiar diretamente no Coolify, sem criar `.env`:
+Se já existe uma instalação: restaure o banco no volume PostgreSQL deste stack; forneça o tenant e a chave privada anteriores em `VOS_TENANT_ID` e `VOS_CONTROL_PRIVATE_KEY` no primeiro início. Configure `SERVICE_REALBASE64_32_DATA` e `SERVICE_BASE64_64_SESSION` com a chave/segredo anteriores, e `SERVICE_PASSWORD_DATABASE` com a senha efetiva do banco restaurado. A aplicação importa a identidade fornecida e recusa alterações que contradigam uma identidade já persistida.
 
-```sh
-node scripts/generate-secrets.mjs
-```
-
-Execute em ambiente privado e guarde os valores. Não inclua sua saída no Git ou em issues. E-mail, senha do Owner, domínio e conexão do banco são preenchidos por você no Coolify.
-
-## Deploy e verificação
-
-Aponte o DNS para o servidor do Coolify, configure o domínio e clique em **Deploy**. Aguarde o serviço ficar saudável. Acesse seu domínio: a aplicação abre o painel/login. `/api/v1/health` deve responder com sucesso e `/login` deve carregar os estilos. Entre com a conta Owner definida acima.
-
-O Coolify termina HTTPS no proxy. Use o mesmo domínio para painel, API e WSS; não é necessário compilar o frontend novamente ao mudar domínio, pois ele usa `/api` na mesma origem. Para mudança de domínio, atualize também `APP_ORIGIN` e reinicie a aplicação.
-
-O servidor Paper é conectado pela tela Configuração do painel. Veja [instalação do plugin](PLUGIN.md). O Player entra com nick/senha AuthMe; o Paper precisa estar ligado, mas o jogador pode estar offline.
-
-## Operação
-
-Mantenha uma réplica da aplicação por instalação. Faça backup do PostgreSQL e das chaves antes de atualizar. Deploys de `main` substituem o container da aplicação, mantendo os dados no recurso PostgreSQL separado. Não habilite previews contra o mesmo banco de produção. Se migrar do Compose antigo, restaure o banco no recurso PostgreSQL escolhido e preserve as chaves; o deploy GitHub App não importa volumes antigos automaticamente.
+Mudar `SERVICE_PASSWORD_OWNER` depois que a conta foi criada não redefine sua senha; use o painel. Mudar `SERVICE_PASSWORD_DATABASE` não altera automaticamente o usuário de um PostgreSQL já inicializado; a rotação deve ser feita também no banco. Não habilite previews com os volumes/dados de produção.
 
 | Sintoma | Conferir |
 |---|---|
-| Nixpacks ou framework incorreto | Selecione Dockerfile como Build Pack |
-| Erro COPY no build | Base `/` e Dockerfile `/Dockerfile` |
-| 502/503 | Porta 3000, saúde do container e logs da API |
-| API não inicia | Variáveis runtime, conexão interna do banco e chaves válidas |
-| Login retorna 403 | `APP_ORIGIN` coincide exatamente com a URL pública |
-| Login Player falha | Plugin atualizado, WSS conectado, login Player permitido e política 2FA/identidade |
+| Compose não carregou | GitHub App, Build Pack Docker Compose e arquivo `/docker-compose.yml` |
+| Campo manual vazio | Preencha `APP_ORIGIN` e `VOS_ADMIN_EMAIL` no Coolify |
+| Banco não inicia | `SERVICE_PASSWORD_DATABASE` foi gerado e o volume está íntegro |
+| Erro de identidade | Preserve/restaure o volume identity e as chaves da instalação |
+| 502/503 | Saúde do portal e domínio apontando à porta interna 3000 |
+| Login retorna 403 | `APP_ORIGIN` coincide exatamente com o endereço público |
 
-Referência oficial: [Dockerfile a partir de Git no Coolify](https://coolify.io/docs/applications/builds/dockerfile).
+Referência: [Docker Compose por Git no Coolify](https://coolify.io/docs/applications/builds/docker-compose).

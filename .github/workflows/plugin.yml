@@ -95,13 +95,22 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '24'
-      - name: Build root Dockerfile and start with runtime environment
+      - name: Test automatic identity provisioning
+        run: node --test scripts/runtime.test.mjs
+      - name: Deploy complete Coolify Compose stack
         run: |
-          node scripts/setup-platform.mjs --email ci@example.test
-          docker compose --env-file .env -p vos-ci -f infrastructure/compose.yml up -d --build --wait
-          curl --fail http://127.0.0.1:3000/api/v1/health
-          node scripts/check-deployment.mjs http://127.0.0.1:3000
+          node scripts/compose-test-env.mjs
+          docker compose --env-file .env.ci -p vos-ci config --quiet
+          docker compose --env-file .env.ci -p vos-ci up -d --build --wait
+          docker compose --env-file .env.ci -p vos-ci exec -T portal node scripts/check-deployment.mjs
+      - name: Verify identity survives container recreation
+        run: |
+          before=$(docker compose --env-file .env.ci -p vos-ci exec -T portal sha256sum /app/state/identity.json)
+          docker compose --env-file .env.ci -p vos-ci up -d --no-deps --force-recreate --wait portal
+          after=$(docker compose --env-file .env.ci -p vos-ci exec -T portal sha256sum /app/state/identity.json)
+          test "$before" = "$after"
+          docker compose --env-file .env.ci -p vos-ci exec -T portal node scripts/check-deployment.mjs
       - name: Stop disposable installation
         if: always()
         run: |
-          if [ -f .env ]; then docker compose --env-file .env -p vos-ci -f infrastructure/compose.yml down --volumes; fi
+          if [ -f .env.ci ]; then docker compose --env-file .env.ci -p vos-ci down --volumes; fi
