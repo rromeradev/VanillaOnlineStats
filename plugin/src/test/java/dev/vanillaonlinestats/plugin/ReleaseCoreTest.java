@@ -99,6 +99,11 @@ class ReleaseCoreTest {
     valid.addProperty("kind", "link");
     valid.addProperty("operation", "player.link.redeem");
     assertEquals("PLAYER", security.verify(sign(valid), Instant.now()).role());
+    valid.addProperty("operation", "player.authme.login");
+    valid.add("arguments", Telemetry.object("nickname", "OfflineTest", "password", "test-only-secret"));
+    assertEquals("PLAYER", security.verify(sign(valid), Instant.now()).role());
+    valid.addProperty("kind", "query");
+    assertThrows(GeneralSecurityException.class, () -> security.verify(sign(valid), Instant.now()));
   }
 
   @Test

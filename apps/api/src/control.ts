@@ -69,7 +69,7 @@ export class Control {
         if (value.type === 'agent.capabilities') {
           const p = value.payload;
           if (!p || p.schemaVersion !== 1 || !Array.isArray(p.queries) || !Array.isArray(p.collectors) || p.queries.length > 64 || p.collectors.length > 32) throw new Error('capabilities');
-          const sanitized = { schemaVersion: 1, playerQueries: p.playerQueries === true, collectors: p.collectors.filter((v: any) => typeof v === 'string' && v.length < 64),
+          const sanitized = { schemaVersion: 1, playerQueries: p.playerQueries === true, authmePasswordLogin: p.authmePasswordLogin === true, collectors: p.collectors.filter((v: any) => typeof v === 'string' && v.length < 64),
             queries: p.queries.filter((v: any) => QUERIES.includes(v)), privacy: Object.fromEntries(['players','positions','inventories','addresses','seeds'].map(key => [key, p.privacy?.[key] === true])),
             unsupported: Array.isArray(p.unsupported) ? p.unsupported.filter((v: any) => typeof v === 'string' && v.length < 128).slice(0, 64) : [] };
           await this.db.rows('UPDATE vos_servers SET capabilities=$1 WHERE tenant_id=$2 AND id=$3', [JSON.stringify(sanitized), server.tenant_id, server.id]); return;

@@ -22,7 +22,7 @@
     "auditCorrelationId": {"type": "string", "format": "uuid"}
   },
   "allOf": [{"if": {"properties": {"actorRole": {"const": "PLAYER"}}}, "then": {"oneOf": [
-    {"properties": {"kind": {"const": "link"}, "operation": {"const": "player.link.redeem"}}},
+    {"properties": {"kind": {"const": "link"}, "operation": {"enum": ["player.link.redeem", "player.authme.login"]}}},
     {"properties": {"kind": {"const": "query"}, "operation": {"enum": ["player.snapshot", "player.inventory", "player.statistics", "player.advancements"]}, "arguments": {"required": ["playerId"], "properties": {"playerId": {"type": "string", "format": "uuid"}}}}}
   ]}}]
 }

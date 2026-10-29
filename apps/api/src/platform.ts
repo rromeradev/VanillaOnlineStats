@@ -80,7 +80,7 @@ export async function createPlatform(config: PlatformConfig) {
   @Controller('api/v1')
   class PlatformController {
     @Get('health') health() { return { status: 'ok' }; }
-    @Get('public/info') info() { return { name: 'VanillaOnlineStats', version: '0.4.0', demo: config.demo === true, playerLogin: 'in-game-code', source: 'https://github.com/rromeradev/VanillaOnlineStats' }; }
+    @Get('public/info') info() { return { name: 'VanillaOnlineStats', version: '0.4.1', demo: config.demo === true, playerLogin: 'authme-password', source: 'https://github.com/rromeradev/VanillaOnlineStats' }; }
     @Get('public/servers') async publicServers() { return db.rows('SELECT id,name FROM vos_servers WHERE player_login=true ORDER BY name LIMIT 100'); }
     @Post('agents/heartbeat') @HttpCode(202)
     async heartbeat(@Headers('authorization') header: string, @Body() body: any) {
@@ -103,6 +103,20 @@ export async function createPlatform(config: PlatformConfig) {
       const dummy = 'scrypt$00000000000000000000000000000000$' + '00'.repeat(64);
       if (!(await passwordMatches(password, account?.password_hash ?? dummy)) || !account) fail(401);
       return createSession(res, 'ADMIN', account.id, account.email);
+    }
+    @Post('auth/player/login') @HttpCode(200)
+    async passwordLogin(@Req() req: Request, @Res({ passthrough: true }) res: Response, @Body() body: any) {
+      origin(req); fields(body, ['serverId','nickname','password']);
+      const server = await db.server(id(body.serverId)), nickname = text(body.nickname, 16);
+      if (!/^[A-Za-z0-9_]{3,16}$/.test(nickname)) fail(400);
+      const password = text(body.password, 128);
+      limits.check('player-password-account:' + server.id + ':' + nickname.toLowerCase(), 5, 900_000);
+      limits.check('player-password-source:' + req.socket.remoteAddress, 60, 900_000);
+      if (!server.player_login) fail(403);
+      if (!server.capabilities?.authmePasswordLogin) fail(409);
+      const result = await control.request(server, { kind:'PLAYER', actor_id:randomUUID() }, 'player.authme.login', {nickname,password}, 'link');
+      if (result.state !== 'SUCCEEDED' || !UUID.test(result.payload?.playerId ?? '') || typeof result.payload?.name !== 'string') fail(401);
+      return createSession(res, 'PLAYER', result.payload.playerId, result.payload.name.slice(0,64), server);
     }
     @Post('auth/player/link') @HttpCode(200)
     async link(@Req() req: Request, @Res({ passthrough: true }) res: Response, @Body() body: any) {

@@ -7,6 +7,7 @@ import { createWriteStream } from 'node:fs';
 import { resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
 const require = createRequire(new URL('../apps/api/package.json', import.meta.url));
 const { Pool } = require('pg'), { createPlatform } = require('./dist/platform.js'), { sha } = require('./dist/security.js');
 const argv = process.argv.slice(2), arg = name => argv[argv.indexOf('--' + name) + 1];
@@ -28,6 +29,14 @@ try {
   await copyFile(resolve(arg('authme')), resolve(root,'plugins/AuthMe.jar'));
   await copyFile(resolve(arg('plugin')), resolve(root,'plugins/VanillaOnlineStats.jar'));
   if (argv.includes('--cache')) for (const dir of ['libraries','cache']) await cp(resolve(arg('cache'),dir), resolve(root,dir), {recursive:true});
+  const playerId = randomUUID(), playerPassword = randomBytes(20).toString('base64url'), salt = '0123456789abcdef';
+  await mkdir(resolve(root,'plugins/AuthMe'),{recursive:true});
+  await copyFile(resolve(arg('cache'),'plugins/AuthMe/authme.db'),resolve(root,'plugins/AuthMe/authme.db'));
+  const fixtureDb = new DatabaseSync(resolve(root,'plugins/AuthMe/authme.db'));
+  fixtureDb.prepare('INSERT INTO authme(username,realname,password,totp) VALUES(?,?,?,?)').run('offlinetest','OfflineTest','$SHA$'+salt+'$'+sha(sha(playerPassword)+salt), null);
+  fixtureDb.prepare('INSERT INTO authme(username,realname,password,totp) VALUES(?,?,?,?)').run('totptest','TotpTest','$SHA$'+salt+'$'+sha(sha(playerPassword)+salt),'ABCDEFGHIJKLMNOP');
+  fixtureDb.close();
+  await writeFile(resolve(root,'usercache.json'),JSON.stringify([{name:'OfflineTest',uuid:playerId,expiresOn:'2030-01-01 00:00:00 +0000'}]));
   await writeFile(resolve(root,'eula.txt'), 'eula=true\n');
   await writeFile(resolve(root,'server.properties'), 'server-ip=127.0.0.1\nserver-port=25586\nview-distance=2\nsimulation-distance=2\nlevel-type=minecraft:flat\ngenerate-structures=false\n');
   await writeFile(resolve(root,'plugins/VanillaOnlineStats/server-id.txt'),serverId+'\n');
@@ -68,6 +77,13 @@ control:
   const action = await invoke('actions',{operation:'world.time',arguments:{worldId,value:6000},confirmed:true}); assert.equal(action.state,'SUCCEEDED');
   const world = await invoke('queries',{operation:'world.snapshot',arguments:{worldId}}); assert.equal(world.state,'SUCCEEDED'); assert.ok(world.payload.time>=6000 && world.payload.time<6200); findings.push('Signed API query and world.time mutation completed by real Paper; result verified by readback.');
   const persisted = await platform.db.one('SELECT count(*)::int AS n FROM vos_audit WHERE server_id=$1',[serverId]); assert.ok(persisted.n>=6); findings.push('Scoped execution and audit history persisted.');
+  await platform.db.rows('UPDATE vos_servers SET player_login=true WHERE id=$1',[serverId]);
+  assert.equal((await call('auth/player/login',{serverId,nickname:'OfflineTest',password:'wrong-password'})).status,401);
+  assert.equal((await call('auth/player/login',{serverId,nickname:'TotpTest',password:playerPassword})).status,401);
+  const offline = await call('auth/player/login',{serverId,nickname:'OfflineTest',password:playerPassword}); assert.equal(offline.status,200); assert.equal((await offline.json()).kind,'PLAYER');
+  const session = await platform.db.one("SELECT actor_id FROM vos_sessions WHERE kind='PLAYER'"); assert.equal(session.actor_id,playerId);
+  assert.equal((await platform.db.one("SELECT count(*)::int AS n FROM vos_actions WHERE operation='player.authme.login'")).n,0);
+  findings.push('Offline AuthMe password login accepted, wrong password/2FA refused, Paper cached UUID matched; login credentials not persisted.');
   await writeFile(resolve(root,'results.txt'),findings.join('\n')+'\n'); console.log(findings.join('\n'));
 } finally {
   if (paper && paper.exitCode === null) { paper.stdin.write('stop\n'); await Promise.race([new Promise(r=>paper.once('exit',r)),new Promise(r=>setTimeout(r,20000))]); if(paper.exitCode===null) paper.kill(); }

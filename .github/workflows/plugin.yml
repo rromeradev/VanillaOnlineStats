@@ -52,22 +52,22 @@ jobs:
         run: >-
           python scripts/smoke_server.py --java "$JAVA_HOME/bin/java"
           --paper .tools/paper.jar --authme .tools/authme.jar
-          --plugin plugin/build/libs/VanillaOnlineStats-0.3.1.jar
+          --plugin plugin/build/libs/VanillaOnlineStats-0.3.2.jar
           --output .tools/smoke --heartbeat --accept-eula
       - name: Release protocol integration (Paper, batches and signed controls)
         run: >-
           python scripts/smoke_release.py --java "$JAVA_HOME/bin/java"
           --paper .tools/paper.jar --authme .tools/authme.jar
-          --plugin plugin/build/libs/VanillaOnlineStats-0.3.1.jar
+          --plugin plugin/build/libs/VanillaOnlineStats-0.3.2.jar
           --output .tools/release-smoke --cache .tools/smoke/with-authme --accept-eula
       - name: Real platform integration (Paper, API, PostgreSQL)
         run: >-
           node scripts/smoke_platform.mjs --java "$JAVA_HOME/bin/java"
           --paper .tools/paper.jar --authme .tools/authme.jar
-          --plugin plugin/build/libs/VanillaOnlineStats-0.3.1.jar
+          --plugin plugin/build/libs/VanillaOnlineStats-0.3.2.jar
           --output .tools/platform-smoke --cache .tools/smoke/with-authme --accept-eula
       - name: Package plugin release
-        run: python scripts/package_plugin.py --version 0.3.1
+        run: python scripts/package_plugin.py --version 0.3.2
       - name: Package platform release
         run: |
           pnpm licenses list --prod --json > .tools/licenses.json

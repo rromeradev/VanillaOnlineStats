@@ -30,6 +30,27 @@ final class RemoteActions {
     this.auth = auth;
   }
 
+  JsonObject passwordLogin(ControlSecurity.Request request) throws Exception {
+    if (!request.kind().equals("link")
+        || !request.operation().equals("player.authme.login")
+        || !request.expiresAt().isAfter(Instant.now()))
+      throw new IllegalArgumentException("Invalid login");
+    JsonObject proof =
+        auth.passwordLogin(
+            text(request.arguments(), "nickname", 16), text(request.arguments(), "password", 128));
+    String name = proof.get("name").getAsString();
+    OfflinePlayer cached =
+        plugin
+            .getServer()
+            .getScheduler()
+            .callSyncMethod(plugin, () -> plugin.getServer().getOfflinePlayerIfCached(name))
+            .get(3, java.util.concurrent.TimeUnit.SECONDS);
+    if (cached != null) proof.addProperty("playerId", cached.getUniqueId().toString());
+    if (!proof.has("playerId") || proof.get("playerId").isJsonNull())
+      throw new IllegalArgumentException("Account identity unavailable");
+    return proof;
+  }
+
   JsonObject execute(ControlSecurity.Request request) {
     if (!request.expiresAt().isAfter(Instant.now())) throw new IllegalArgumentException("Expired");
     JsonObject args = request.arguments();

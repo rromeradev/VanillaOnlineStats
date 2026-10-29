@@ -84,7 +84,7 @@ final class ControlSecurity {
       if (!Set.of("ADMIN", "OWNER").contains(role)
           && !(role.equals("PLAYER")
               && kind.equals("link")
-              && operation.equals("player.link.redeem"))
+              && Set.of("player.link.redeem", "player.authme.login").contains(operation))
           && !(role.equals("PLAYER")
               && kind.equals("query")
               && Set.of(

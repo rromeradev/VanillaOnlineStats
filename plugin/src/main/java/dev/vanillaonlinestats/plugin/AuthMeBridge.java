@@ -34,6 +34,39 @@ final class AuthMeBridge {
     }
   }
 
+  com.google.gson.JsonObject passwordLogin(String name, String password) throws Exception {
+    if (!name.matches("[A-Za-z0-9_]{3,16}") || password.isEmpty() || password.length() > 128)
+      throw new IllegalArgumentException("Invalid credentials");
+    // Baseline-specific adapter: fail closed if AuthMe cannot expose the account's 2FA policy.
+    var sourceField = api.getClass().getDeclaredField("dataSource");
+    sourceField.setAccessible(true);
+    Object source = sourceField.get(api);
+    Class<?> sourceType =
+        Class.forName(
+            "fr.xephi.authme.datasource.DataSource", true, api.getClass().getClassLoader());
+    Object account =
+        sourceType
+            .getMethod("getAuth", String.class)
+            .invoke(source, name.toLowerCase(java.util.Locale.ROOT));
+    if (account == null) throw new IllegalArgumentException("Invalid credentials");
+    String totp = (String) account.getClass().getMethod("getTotpKey").invoke(account);
+    if (totp != null && !totp.isBlank())
+      throw new IllegalArgumentException("Additional authentication required");
+    if (!(boolean)
+        api.getClass()
+            .getMethod("checkPassword", String.class, String.class)
+            .invoke(api, name, password)) throw new IllegalArgumentException("Invalid credentials");
+    java.util.UUID uuid = (java.util.UUID) account.getClass().getMethod("getUuid").invoke(account);
+    String realName = (String) account.getClass().getMethod("getRealName").invoke(account);
+    return Telemetry.object(
+        "playerId",
+        uuid == null ? null : uuid.toString(),
+        "name",
+        realName == null ? name : realName,
+        "proof",
+        "authme-password");
+  }
+
   @SuppressWarnings("unchecked")
   void listen(JavaPlugin plugin, Plugin authMe, BiConsumer<Player, String> callback)
       throws ReflectiveOperationException {

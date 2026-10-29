@@ -179,6 +179,25 @@ final class ControlChannel implements AutoCloseable {
       send(origin, result(request, "REJECTED", null));
       return;
     }
+    if (request.kind().equals("link") && request.operation().equals("player.authme.login")) {
+      try {
+        JsonObject payload = actions.passwordLogin(request);
+        if (!request.expiresAt().isAfter(Instant.now()))
+          throw new IllegalArgumentException("Expired");
+        audit.result(request, "SUCCEEDED");
+        send(origin, result(request, "SUCCEEDED", payload));
+      } catch (Exception rejected) {
+        try {
+          audit.result(request, "FAILED");
+        } catch (Exception unavailable) {
+          healthy = false;
+        }
+        send(origin, result(request, "FAILED", null));
+      } finally {
+        inFlight.decrementAndGet();
+      }
+      return;
+    }
     try {
       plugin
           .getServer()

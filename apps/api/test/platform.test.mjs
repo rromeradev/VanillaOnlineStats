@@ -68,23 +68,28 @@ suite('real WebSocket protocol signs exact scoped requests and matches results',
   ws.on('message', data => {
     const wrapper = JSON.parse(data.toString()), bytes = Buffer.from(wrapper.body, 'base64url'); assert.ok(verify(null, bytes, publicKey, Buffer.from(wrapper.signature, 'base64url')));
     const body = JSON.parse(bytes.toString()); assert.equal(body.serverId, serverId); assert.equal(body.tenantId, tenantId);
-    const payload = body.operation === 'player.link.redeem' ? { playerId: sessions.playerId, name: 'Only Me' } : body.operation === 'player.snapshot' ? { uuid: body.arguments.playerId, name: 'Only Me', permissions: ['not-for-player'], address: '127.0.0.1' } : { ok: true };
+    if (body.operation === 'player.authme.login' && body.arguments.password !== 'Dummy-password-no-persistence') {
+      ws.send(JSON.stringify({type:'control.result',actionId:body.actionId,auditCorrelationId:body.auditCorrelationId,state:'FAILED',payload:null})); return;
+    }
+    const payload = ['player.link.redeem','player.authme.login'].includes(body.operation) ? { playerId: sessions.playerId, name: 'Only Me' } : body.operation === 'player.snapshot' ? { uuid: body.arguments.playerId, name: 'Only Me', permissions: ['not-for-player'], address: '127.0.0.1' } : { ok: true };
     if (body.kind === 'action') assert.equal(body.actorRole, 'OWNER');
     if (body.operation === 'player.snapshot') { assert.equal(body.actorRole, 'PLAYER'); assert.equal(body.arguments.playerId, sessions.playerId); }
     ws.send(JSON.stringify({ type: 'control.result', actionId: body.actionId, auditCorrelationId: body.auditCorrelationId, state: 'SUCCEEDED', payload }));
   });
-  ws.send(JSON.stringify({ type: 'agent.capabilities', payload: { schemaVersion: 1, playerQueries: true, collectors: ['players','performance'], queries: ['server.snapshot','player.snapshot'], privacy: { players: true }, unsupported: [] } }));
+  ws.send(JSON.stringify({ type: 'agent.capabilities', payload: { schemaVersion: 1, playerQueries: true, authmePasswordLogin: true, collectors: ['players','performance'], queries: ['server.snapshot','player.snapshot'], privacy: { players: true }, unsupported: [] } }));
   for (let i=0; i<30; i++) { const server = await platform.db.server(serverId); if (server.capabilities.playerQueries) break; await new Promise(resolve => setTimeout(resolve, 20)); }
   const response = await post(`servers/${serverId}/queries`, { operation: 'server.snapshot', arguments: {} }); assert.equal(response.status, 200); assert.equal((await response.json()).state, 'SUCCEEDED');
   await post('auth/reauth', { password });
   const action = await post(`servers/${serverId}/actions`, { operation: 'server.console', arguments: { command: 'say hello' }, confirmed: true }); assert.equal((await action.json()).state, 'SUCCEEDED');
   assert.ok((await platform.db.rows('SELECT * FROM vos_audit WHERE server_id=$1', [serverId])).length > 0);
 });
-suite('Player login by code remains scoped; no administrative access or different player target', async () => {
+suite('Offline Player password login remains scoped; no administrative access or different player target', async () => {
   sessions.playerId = randomUUID(); await platform.db.rows('UPDATE vos_servers SET player_login=true WHERE id=$1', [serverId]);
-  const response = await post('auth/player/link', { serverId, code: 'in-game-test-code-only' }, null); assert.equal(response.status, 200);
+  assert.equal((await post('auth/player/login', {serverId,nickname:'OnlyMe',password:'wrong-password'}, null)).status, 401);
+  const response = await post('auth/player/login', { serverId, nickname: 'OnlyMe', password: 'Dummy-password-no-persistence' }, null); assert.equal(response.status, 200);
   const identity = await response.json(); const player = { cookie: response.headers.get('set-cookie').split(';')[0], csrf: identity.csrf };
   assert.equal(identity.kind, 'PLAYER');
+  assert.equal((await platform.db.one("SELECT count(*)::int AS n FROM vos_actions WHERE operation='player.authme.login'")).n, 0);
   assert.equal((await request(`servers/${serverId}/overview`, {}, player)).status, 403);
   assert.equal((await post(`servers/${serverId}/actions`, { operation: 'world.time', arguments: {}, confirmed: true }, player)).status, 403);
   assert.equal((await request(`me/servers/${otherServer}`, {}, player)).status, 403);

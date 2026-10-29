@@ -2,6 +2,13 @@
 
 ## Não lançado
 
+## 0.4.1 — 2026-10-29
+
+- Login Player por nick/senha AuthMe, sem presença no jogo e sem /vos link.
+- Plugin 0.3.2: verificação assíncrona, resolução de UUID conhecido e recusa de contas TOTP.
+- Credenciais transitórias, sem persistência; limites por conta e origem.
+
+
 ## 0.4.0 — 2026-10-28
 
 - API persistente PostgreSQL: lotes, snapshots, histórico, alertas e isolamento tenant/servidor.
