@@ -7,12 +7,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - name: Verify bootstrap
+      - name: Verify repository documentation
         shell: bash
         run: |
-          for file in README.md LICENSE CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md CHANGELOG.md THIRD_PARTY_NOTICES.md docs/PROJECT_BLUEPRINT.md docs/ROADMAP.md; do
+          for file in Dockerfile README.md LICENSE CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md CHANGELOG.md THIRD_PARTY_NOTICES.md docs/SPECIFICATION.md docs/ROADMAP.md docs/DEPLOYMENT.md docs/DEVELOPMENT.md docs/PLUGIN.md docs/ARCHITECTURE.md; do
             test -s "$file" || exit 1
           done
           grep -q 'GNU AFFERO GENERAL PUBLIC LICENSE' LICENSE
-          cmp VanillaOnlineStats.md docs/PROJECT_BLUEPRINT.md
           git diff --check

@@ -1,13 +1,40 @@
-# VanillaOnlineStats 0.3.0 — plugin
+# Plugin Paper/AuthMe
 
-Build estável do agente para Paper 26.3 build 227, Java 25 e AuthMe 6.0.1-b2770. Esta release amplia o agente; não torna concluídas todas as funcionalidades futuras do blueprint. A matriz abaixo é o contrato de cobertura desta versão. Não há frontend nem backend novo nesta entrega.
+Versão atual: **0.3.2**, integrada à plataforma 0.4.1. Baseline: Paper 26.3 build 227, Java 25 e AuthMe 6.0.1-b2770. As funcionalidades abaixo são a cobertura atual, não uma promessa de todas as funções da especificação.
 
+## Instalação
+
+Instale AuthMe e o JAR VanillaOnlineStats em `plugins/` e inicie o Paper. Na tela Configuração do painel, vincule o UUID mostrado por `vos status`. Coloque o token gerado em `VOS_AGENT_TOKEN` no ambiente do Paper/Pterodactyl. Copie endpoints, tenant e chave pública para `plugins/VanillaOnlineStats/config.yml` e reinicie o servidor.
+
+```yaml
+schema-version: 2
+heartbeat:
+  enabled: true
+  endpoint: https://stats.seu-dominio.com/api/v1/agents/heartbeat
+  allow-loopback-http: false
+telemetry:
+  endpoint: https://stats.seu-dominio.com/api/v1/agents/telemetry/batches
+control:
+  endpoint: wss://stats.seu-dominio.com/api/v1/agents/control
+  tenant-id: UUID_DO_PAINEL
+  public-key: CHAVE_PUBLICA_DO_PAINEL
+  writes-enabled: false
+  allowed-operations: []
+```
+
+Preserve as demais opções do config. Token nunca vai no arquivo. A chave privada fica somente na API. O heartbeat e o canal WSS devem aparecer conectados.
+
+## Login Player
+
+Habilite login Player na Configuração do painel. O jogador informa nick e senha AuthMe, sem entrar no jogo e sem /vos link. A validação roda fora da thread principal e não grava senha no backend/auditoria. O servidor Paper deve estar ligado. Contas TOTP são recusadas até integrar segunda etapa; contas sem UUID conhecido no AuthMe/cache Paper também são recusadas.
+
+Histórico/perfil previamente coletados podem ser vistos offline. Para coletar estado de jogadores, habilite `privacy.player-state`; inventários exigem também `privacy.inventories`. Consultas ao vivo exigem personagem online/autenticado. `/vos link` continua disponível por compatibilidade, mas não é requerido pelo formulário.
 ## Funcionalidades presentes
 
 | Área | Implementação |
 |---|---|
 | Inicialização | Dependência obrigatória AuthMe; baseline verificada; identidade persistente; migração config v1 → v2 com backup |
-| Heartbeat | Compatível com API 0.2; envio assíncrono, ACK validado, timeout, backoff, contadores |
+| Heartbeat | Envio assíncrono, ACK validado, timeout, backoff, contadores |
 | Servidor | Versões, implementação, MOTD, capacidade, modo online, whitelist e plugins |
 | Performance | TPS, MSPT médio e percentis da janela disponível, slow ticks, heap/non-heap, threads, GC, uptime, CPU e memória visíveis à JVM/container |
 | Mundos | Identidade, dimensão, clima, tempo, dificuldade, chunks/entidades carregados, regras disponíveis, border, spawn/seed sob política |
@@ -17,7 +44,7 @@ Build estável do agente para Paper 26.3 build 227, Java 25 e AuthMe 6.0.1-b2770
 | Estatísticas | Estatísticas nativas sem parâmetro paginadas; estatísticas por material ou entidade consultáveis individualmente; advancements paginados com datas |
 | AuthMe | Login, logout, restauração, registro e exclusão pelo jogador; sessões com duração; código in-game de uso único após autenticação |
 | Eventos | Entrada/saída, morte/dano/PvP, progressão, XP, itens, crafting/smelting, veículos, mundos/chunks, clima; blocos/entidades de alto volume opcionais |
-| Privacidade | Campos sensíveis desativados por padrão; nenhum hash/senha AuthMe é consultado; auditoria de comandos guarda apenas raiz explicitamente permitida |
+| Privacidade | Campos sensíveis desativados por padrão; credenciais de login são transitórias; o AuthMe valida a senha sem exportar hashes; auditoria de comandos guarda apenas raiz explicitamente permitida |
 | Chat | Opt-in, jogador autenticado, máximo 512 caracteres, fila de encaminhamento limitada; não captura comandos |
 | Telemetria | Envelope v1, fila limitada por bytes/mensagens, coalescência de snapshots, ACK por IDs, retenção de cinco minutos e contadores de perdas |
 | Recuperação | Spool AES-256-GCM opcional com VOS_STORAGE_KEY independente; checkpoint assíncrono a cada dois segundos, limite igual ao da fila |
@@ -34,9 +61,7 @@ Build estável do agente para Paper 26.3 build 227, Java 25 e AuthMe 6.0.1-b2770
 - LuckPerms (grupo primário), Vault (saldo) e PlaceholderAPI (allowlist) possuem adaptadores opcionais por API pública; ainda não foram validados com artefatos desses plugins e ficam desligados por padrão.
 - WorldGuard, CoreProtect, EssentialsX, spark, BlueMap/Dynmap são detectados, mas não possuem adaptadores funcionais nesta release. Detecção não significa suporte à integração.
 - Não há rollback, arquivos/reinício/backups do host, profiling por plugin, varredura de chunks descarregados, Folia, importação histórica nem dados de cliente Minecraft.
-- O login web por senha não está habilitado. O plugin oferece prova de autenticação por código in-game; senha isolada não substitui a política premium/2FA do AuthMe. A API futura deve consumir o fluxo de código e aplicar sua própria política de sessão.
-- O identificador exportado é UUID Paper com origem explícita. Reconciliação de aliases e identidades premium/offline depende do backend e não pode ser deduzida apenas pelo nickname.
-- Estatísticas históricas, rankings, metas, alertas, retenção longa e cálculo de online/offline pertencem ao backend.
+- O identificador é o UUID conhecido pelo Paper/AuthMe. Login web não inventa UUIDs a partir do nickname; contas sem identidade conhecida são recusadas.
 - Ainda não há benchmark com carga de jogadores reais. Os budgets controlam amostragens, não interrompem uma chamada nativa que já começou. Uma consulta pode ultrapassar o orçamento; as durações são expostas.
 
 ## Atualização a partir de 0.2
@@ -44,17 +69,17 @@ Build estável do agente para Paper 26.3 build 227, Java 25 e AuthMe 6.0.1-b2770
 1. Pare o Paper, faça backup da pasta do plugin e substitua o JAR.
 2. Preserve server-id.txt e VOS_AGENT_TOKEN. O heartbeat continua compatível com sua API atual.
 3. A configuração vira schema-version 2; config-v1.backup.yml é preservado. Os campos novos recebem defaults conservadores.
-4. O envio completo e o controle continuam desligados até configurar os endpoints correspondentes. A API 0.2 só recebe heartbeat.
+4. O envio completo e o controle continuam desligados até configurar os endpoints correspondentes. Use a API atual para os lotes e o controle.
 
-Use `vos status`, `vos collectors`, `vos capabilities` e `vos queue`. No console, `vos query server.performance` e `vos query worlds.list` permitem validar coleta antes de desenvolver o frontend. Consultas com argumentos usam JSON: `vos query world.snapshot {"worldId":"UUID"}`.
+Use `vos status`, `vos collectors`, `vos capabilities` e `vos queue`. No console, `vos query server.performance` e `vos query worlds.list` permitem validar coleta para validar a coleta local. Consultas com argumentos usam JSON: `vos query world.snapshot {"worldId":"UUID"}`.
 
 ## Configuração de telemetria e controle
 
 `telemetry.endpoint`: `https://DOMINIO/api/v1/agents/telemetry/batches`.
 
-`control.endpoint`: `wss://DOMINIO/api/v1/agents/control`; `control.tenant-id` deve ser UUID; `control.public-key` é Ed25519 pública X.509 DER em Base64. A chave privada pertence somente à futura API. A credencial de agente não autoriza comandos sozinha.
+`control.endpoint`: `wss://DOMINIO/api/v1/agents/control`; `control.tenant-id` deve ser UUID; `control.public-key` é Ed25519 pública X.509 DER em Base64. A chave privada pertence somente à API. A credencial de agente não autoriza comandos sozinha.
 
-`control.writes-enabled`, `control.allowed-operations`, `control.console-enabled` e `control.allowed-console-roots` são configurados localmente. Nenhum comando remoto habilita suas próprias permissões. Um PLAYER só pode resgatar um código de vinculação; nunca consultar dados administrativos ou alterar o jogo.
+`control.writes-enabled`, `control.allowed-operations`, `control.console-enabled` e `control.allowed-console-roots` são configurados localmente. Nenhum comando remoto habilita suas próprias permissões. Um PLAYER pode autenticar-se e consultar somente seu próprio UUID; nunca consultar dados administrativos ou alterar o jogo.
 
 `VOS_STORAGE_KEY` contém 32 bytes aleatórios codificados em Base64. Preserve a chave para recuperar o spool; chave incorreta ou spool corrompido recusa inicialização. Sem chave, não há persistência de telemetria. Checkpoints têm janela de até dois segundos e a retenção é de cinco minutos; não há promessa de entrega sem perdas. O status expõe descartes e falha de armazenamento.
 

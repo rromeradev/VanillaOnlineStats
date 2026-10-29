@@ -1,8 +1,8 @@
 # Contribuindo
 
-Leia o README e docs/PROJECT_BLUEPRINT.md. Idioma da documentação: pt-BR; código e identificadores: inglês.
+Leia o README e docs/SPECIFICATION.md. Idioma da documentação: pt-BR; código e identificadores: inglês.
 
-Abra uma issue descrevendo requisito, escopo (MVP/V1/FUTURO) e critérios de aceite. Envie PRs pequenas com motivação, validação e documentação. Mudanças de arquitetura, autenticação, coleta sensível, controle remoto ou licença requerem ADR em docs/architecture/adr/.
+Abra uma issue descrevendo requisito, escopo (MVP/V1/FUTURO) e critérios de aceite. Envie PRs pequenas com motivação, validação e documentação. Mudanças de arquitetura, autenticação, coleta sensível, controle remoto ou licença requerem atualização em docs/ARCHITECTURE.md, com motivação e validação.
 
 ## DCO
 

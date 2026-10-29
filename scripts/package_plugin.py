@@ -37,7 +37,7 @@ files = {
     jar.name: jar,
     'LICENSE': root / 'LICENSE',
     'THIRD_PARTY_NOTICES.md': root / 'THIRD_PARTY_NOTICES.md',
-    'INSTALL.md': root / f'docs/plugin/RELEASE-{args.version}.md',
+    'INSTALL.md': root / 'docs/PLUGIN.md',
     'config.example.yml': root / 'plugin/src/main/resources/config.yml',
     'plugin-runtime.cdx.json': bom_path,
     'contracts/telemetry-envelope.schema.json': root / 'packages/api-contracts/telemetry-envelope.schema.json',

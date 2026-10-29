@@ -1,41 +1,43 @@
 # VanillaOnlineStats
 
-Observabilidade para servidores Minecraft Paper Survival, com integração obrigatória ao AuthMeReloaded e áreas Admin e Player.
+Painel web e API para servidores Minecraft Paper, com integração AuthMe e áreas Owner/Admin e Player. O painel oferece temas claro, escuro e automático pelo sistema.
 
-**Estado: plataforma self-hosted 0.4.1 e agente 0.3.2.** API NestJS com PostgreSQL e painel Angular para Paper 26.3 build 227, Java 25 e AuthMe 6.0.1 Paper. Áreas Owner/Admin e Player, consultas, controles auditados, histórico e temas claro/escuro/automático.
+**Versões:** plataforma 0.4.1, plugin 0.3.2. **Baseline:** Paper 26.3 build 227, Java 25 e AuthMe 6.0.1-b2770.
 
-Comece pelo [guia de instalação da plataforma](docs/platform/RELEASE-0.4.1.md). Consulte também a [cobertura do agente](docs/plugin/RELEASE-0.3.0.md). A release não implementa todas as integrações opcionais/futuras do blueprint; a matriz informa explicitamente as limitações.
+## Deploy no Coolify com GitHub App
 
-## Projeto
+1. Crie uma aplicação em **Git Repository (with GitHub App)** e selecione este repositório, branch `main`.
+2. Use **Build Pack: Dockerfile**, **Base Directory: /**, **Dockerfile: /Dockerfile** e **Port: 3000**.
+3. Configure as variáveis de runtime diretamente em **Environment Variables** no Coolify e informe a conexão do seu PostgreSQL.
+4. Configure o domínio HTTPS e clique em **Deploy**. O mesmo container serve painel, API e WebSocket. A página inicial abre o painel/login.
 
-Self-hosted primeiro, com isolamento por tenant e servidor desde o início. A evolução prevista inclui telemetria, estatísticas pessoais e administração remota exclusiva de Admin/Owner, autenticada e auditada. SaaS é uma etapa futura.
-
-- [Especificação completa](docs/PROJECT_BLUEPRINT.md)
-- [Roadmap](docs/ROADMAP.md)
-- [Contribuição e DCO](CONTRIBUTING.md)
-- [Segurança](SECURITY.md)
+Nenhum arquivo `.env` precisa ser criado ou enviado para o deploy. Veja [variáveis e configuração do Coolify](docs/DEPLOYMENT.md).
 
 ## Estrutura
 
-| Diretório | Responsabilidade planejada |
+| Caminho | Conteúdo |
 |---|---|
-| plugin/ | Plugin Paper em Java, com AuthMe |
-| apps/api/ | Backend NestJS |
-| apps/web/ | Portal Angular |
-| packages/api-contracts/ | Contratos versionados |
-| packages/shared-types/ | Tipos compartilhados |
-| packages/design-tokens/ | Tokens de interface |
-| infrastructure/ | Implantação self-hosted |
-| docs/ | Requisitos, roadmap e decisões |
+| `Dockerfile` | Build e execução da aplicação no Coolify |
+| `apps/web` | Painel Angular |
+| `apps/api` | API NestJS e migração PostgreSQL |
+| `plugin` | Agente Paper/AuthMe em Java |
+| `packages/api-contracts` | Contratos JSON Schema compartilhados |
+| `infrastructure/compose.yml` | Ambiente local opcional com PostgreSQL |
+| `scripts` | Configuração, testes de integração e empacotamento |
+| `docs` | Documentação consolidada |
 
-## Desenvolvimento
+## Documentação
 
-Para hospedar API e painel no Coolify, siga o [guia de deploy](docs/deployment/coolify.md) usando `docker-compose.coolify.yml` na raiz do repositório.
-
-Consulte o [setup local](docs/development/local-setup.md) e o [guia de heartbeat](docs/development/heartbeat.md). O projeto usa Gradle Wrapper, pnpm, JUnit e JSON Schema. A CI compila, verifica autorização/contratos e testa queda/reconexão da API usando um servidor Paper real.
+- [Deploy e variáveis](docs/DEPLOYMENT.md)
+- [Desenvolvimento e testes](docs/DEVELOPMENT.md)
+- [Instalação e cobertura do plugin](docs/PLUGIN.md)
+- [Catálogo dos dados](docs/DATA-CATALOG.md)
+- [Arquitetura e limites atuais](docs/ARCHITECTURE.md)
+- [Roadmap](docs/ROADMAP.md) e [especificação original](docs/SPECIFICATION.md)
+- [Contribuição](CONTRIBUTING.md), [segurança](SECURITY.md) e [changelog](CHANGELOG.md)
 
 ## Licença
 
-Código original sob [AGPL-3.0-only](LICENSE). Contribuições usam DCO (commits com Signed-off-by). Dependências futuras preservam suas respectivas licenças.
+[AGPL-3.0-only](LICENSE), com DCO para contribuições. Dependências mantêm suas licenças, descritas em [avisos de terceiros](THIRD_PARTY_NOTICES.md).
 
 Projeto independente, sem afiliação oficial com Mojang, Microsoft, PaperMC ou AuthMe.

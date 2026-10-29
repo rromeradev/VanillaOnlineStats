@@ -2,6 +2,11 @@
 
 ## Não lançado
 
+- Dockerfile na raiz para Git Repository com GitHub App no Coolify; variáveis somente em runtime e PostgreSQL separado.
+- Documentação consolidada em docs/, removendo duplicatas, guias antigos por release e diretórios sem implementação.
+- Comando start padronizado e verificação de rotas SPA/JS/CSS no deploy.
+
+
 - Deploy Coolify via Compose na raiz, variáveis runtime obrigatórias e PostgreSQL interno persistente.
 - Gerador privado de variáveis para Coolify, guia de instalação e teste da configuração na CI.
 
@@ -47,6 +52,6 @@
 - Blueprint atualizado a DRAFT-003 por decisão do mantenedor.
 
 - Estrutura documental inicial do monorepo.
-- Blueprint DRAFT-002 preservado em docs/PROJECT_BLUEPRINT.md.
+- Blueprint DRAFT-002 preservado em docs/SPECIFICATION.md.
 - Licença AGPL-3.0-only, DCO e orientações de comunidade.
 - Templates de colaboração e CI documental.

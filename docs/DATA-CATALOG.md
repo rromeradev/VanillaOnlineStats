@@ -1,6 +1,6 @@
-# Catálogo do agente 0.3.0
+# Catálogo do agente
 
-Baseline de todas as linhas: Paper 26.3-227 / Java 25; AuthMe 6.0.1-b2770. Owner técnico: módulo do agente indicado. Sem importação retroativa de eventos. Dados exportados não são públicos: a API futura deve aplicar autorização tenant/servidor/jogador e retenção no banco.
+Baseline de todas as linhas: Paper 26.3-227 / Java 25; AuthMe 6.0.1-b2770. Owner técnico: módulo do agente indicado. Sem importação retroativa de eventos. Dados exportados não são públicos: a API deve aplicar autorização tenant/servidor/jogador e retenção no banco.
 
 | Envelope/consulta | Campos/grupos | Origem e modo | Intervalo/custo | Sensibilidade e retenção | Owner / validação |
 |---|---|---|---|---|---|

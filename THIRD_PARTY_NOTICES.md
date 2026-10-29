@@ -1,7 +1,7 @@
 # Avisos de terceiros
 
-Nenhum código ou binário de terceiros é distribuído neste bootstrap.
-Paper e AuthMeReloaded são integrações planejadas, não estão incluídos.
+O frontend inclui dependências JavaScript com os respectivos avisos de licença.
+Paper e AuthMeReloaded são dependências externas; seus binários não são incluídos.
 Registrar dependência, versão, origem, licença e atribuições ao adicionar componentes; gerar SBOM antes das releases.
 
 ## Gradle Wrapper
@@ -16,7 +16,7 @@ Licença: https://github.com/gradle/gradle/blob/v9.2.1/LICENSE
 Paper API 26.3.build.227-stable: GPL-3.0 (conforme metadados upstream), compileOnly, não incluída no JAR.
 JUnit 5.12.2: EPL-2.0, apenas testes.
 jsonschema 4.23.0: MIT, apenas testes de contratos.
-As dependências transitivas estão no lockfile/metadados Gradle. SBOM e revisão integral de distribuição continuam necessários antes da release.
+As dependências transitivas estão no lockfile/metadados Gradle. Os pacotes de release incluem SBOM de runtime.
 
 ## API e serialização
 
@@ -25,7 +25,7 @@ As dependências transitivas estão no lockfile/metadados Gradle. SBOM e revisã
 - reflect-metadata 0.2.2 e TypeScript 5.9.3: Apache-2.0.
 - RxJS 7.8.2: Apache-2.0.
 
-Versões e integridade das dependências JavaScript em pnpm-lock.yaml; os pacotes distribuídos pelos gerenciadores mantêm seus textos de licença. O software não inclui binários Paper/AuthMe. Não há release de distribuição agregada nesta etapa.
+Versões e integridade das dependências JavaScript em pnpm-lock.yaml; os pacotes distribuídos pelos gerenciadores mantêm seus textos de licença. O software não inclui binários Paper/AuthMe. As releases incluem SBOM e os textos de licença correspondentes.
 
 ## Portal e persistência 0.4.0
 

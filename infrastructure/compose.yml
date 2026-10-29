@@ -17,7 +17,7 @@ services:
   portal:
     build:
       context: ..
-      dockerfile: infrastructure/Dockerfile
+      dockerfile: Dockerfile
     restart: unless-stopped
     env_file: ../.env
     environment:
