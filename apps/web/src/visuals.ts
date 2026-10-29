@@ -37,7 +37,7 @@ export class PlayerModel implements AfterViewInit,OnChanges,OnDestroy {
   private async load(){const url=this.previewUrl.startsWith('blob:')?this.previewUrl:skinUrl(this.skin),key=url+':'+this.skin?.model;if(!url){this.version++;this.loaded='';if(this.viewer)this.viewer.renderPaused=true;this.ready.set(false);this.message.set('Skin ainda não observada');return;}if(this.loaded===key)return;this.loaded=key;const version=++this.version;this.ready.set(false);this.viewer?.dispose();this.viewer=undefined;
     try{const {SkinViewer}=await import('skinview3d');if(!this.alive||version!==this.version)return;
       if(!this.viewer){this.viewer=new SkinViewer({canvas:this.canvas!.nativeElement,width:240,height:290,zoom:.85});this.viewer.controls.enableZoom=false;this.viewer.controls.enablePan=false;this.viewer.autoRotate=false;}
-      const viewer=this.viewer;await viewer.loadSkin(url,{model:this.skin?.model==='slim'?'slim':'default'});if(!this.alive||version!==this.version)return;viewer.renderPaused=!this.visible;this.ready.set(true);
+      const viewer=this.viewer;await viewer.loadSkin(url,{model:this.skin?.model==='slim'?'slim':this.skin?.model==='classic'?'default':'auto-detect'});if(!this.alive||version!==this.version)return;viewer.renderPaused=!this.visible;this.ready.set(true);
     }catch{if(this.alive&&version===this.version){this.ready.set(false);this.message.set('Modelo 3D indisponível neste navegador');this.loaded='';}}
   }
 }
